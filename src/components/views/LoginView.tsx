@@ -580,14 +580,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </button>
                 </div>
 
-                {/* Multi-Tenant Database Notice */}
-                <div className="p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-[11px] text-blue-950 flex items-start gap-2 mb-3.5">
-                  <Database className="w-3.5 h-3.5 text-blue-700 shrink-0 mt-0.5" />
-                  <div className="leading-snug">
-                    <span className="font-bold text-blue-900">Database Mandiri:</span> Tiap akun memiliki database transaksi, saldo kas, katalog POS, & riwayat member tersendiri tanpa bercampur.
-                  </div>
-                </div>
-
                 {/* Feedback Alerts on Register Card */}
                 {errorMessage && (
                   <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
