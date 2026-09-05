@@ -38,8 +38,10 @@ import {
   Line,
   ComposedChart,
 } from 'recharts';
-import { PosSale, PosSaleItem, Product, UserRole } from '../../types';
+import { PosSale, PosSaleItem, Product, UserRole, AgentProfile, PrinterSettings } from '../../types';
 import { formatRp } from '../../utils/formatters';
+import { ModalPrintReport, ReportPrintData } from '../modals/ModalPrintReport';
+import { generatePosReportHtml } from '../../utils/reportPrinterService';
 
 interface LaporanPenjualanFisikViewProps {
   posSales?: PosSale[];
@@ -47,15 +49,25 @@ interface LaporanPenjualanFisikViewProps {
   products?: Product[];
   currentRole: UserRole;
   operatorName?: string;
+  profile?: AgentProfile;
+  printerSettings?: PrinterSettings;
   onVoidSale?: (saleId: string) => void;
   onReprintReceipt?: (sale: PosSale) => void;
   onNavigateToPOS?: () => void;
   onNavigateToStock?: () => void;
 }
 
-export type DatePeriodOption = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'CUSTOM';
+export type DatePeriodOption = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'LAST_MONTH' | 'CUSTOM';
 type ChartViewMode = 'trend' | 'comparison' | 'products';
 type ViewSubTab = 'transaksi' | 'produk' | 'kasir';
+
+// Format Date to YYYY-MM-DD for HTML input
+function toDateInputValue(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // Helper to parse Indonesian formatted date strings e.g. "26 Apr 2026 10:15"
 function parseIndoDate(dateStr?: string): Date | null {
@@ -63,12 +75,21 @@ function parseIndoDate(dateStr?: string): Date | null {
   const isoDate = new Date(dateStr);
   if (!isNaN(isoDate.getTime())) return isoDate;
 
+  // Handle DD/MM/YYYY or DD-MM-YYYY
+  const slashMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slashMatch) {
+    const d = parseInt(slashMatch[1], 10);
+    const m = parseInt(slashMatch[2], 10) - 1;
+    const y = parseInt(slashMatch[3], 10);
+    return new Date(y, m, d);
+  }
+
   const indonesianMonths: { [key: string]: number } = {
     jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5,
     jul: 6, agu: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11,
   };
 
-  const parts = dateStr.trim().split(/\s+/);
+  const parts = dateStr.trim().split(/[\s,]+/);
   if (parts.length >= 3) {
     const day = parseInt(parts[0], 10);
     const monthKey = parts[1].toLowerCase().slice(0, 3);
@@ -95,6 +116,8 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
   products = [],
   currentRole,
   operatorName = 'Kasir',
+  profile,
+  printerSettings,
   onVoidSale,
   onReprintReceipt,
   onNavigateToPOS,
@@ -115,6 +138,16 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
   const [chartViewMode, setChartViewMode] = useState<ChartViewMode>('trend');
   const [activeSubTab, setActiveSubTab] = useState<ViewSubTab>('transaksi');
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<PosSale | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printData, setPrintData] = useState<ReportPrintData | null>(null);
+
+  const activeProfile: AgentProfile = profile || {
+    storeName: 'KASIR POS RETAIL',
+    ownerName: 'Administrator',
+    phone: '',
+    address: '',
+    idAgent: 'POS-01',
+  };
 
   // Cashiers list
   const cashiers = useMemo(() => {
@@ -125,10 +158,83 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
     return ['ALL', ...Array.from(set)];
   }, [actualSales]);
 
+  // Preset date handler
+  const handleSetPreset = (preset: DatePeriodOption) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    setPeriod(preset);
+
+    if (preset === 'ALL') {
+      setCustomStartDate('');
+      setCustomEndDate('');
+    } else if (preset === 'TODAY') {
+      const tStr = toDateInputValue(today);
+      setCustomStartDate(tStr);
+      setCustomEndDate(tStr);
+    } else if (preset === 'YESTERDAY') {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const yStr = toDateInputValue(yesterday);
+      setCustomStartDate(yStr);
+      setCustomEndDate(yStr);
+    } else if (preset === '7D') {
+      const past7 = new Date(today);
+      past7.setDate(today.getDate() - 6);
+      setCustomStartDate(toDateInputValue(past7));
+      setCustomEndDate(toDateInputValue(today));
+    } else if (preset === '30D') {
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      setCustomStartDate(toDateInputValue(firstDay));
+      setCustomEndDate(toDateInputValue(today));
+    } else if (preset === 'LAST_MONTH') {
+      const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      setCustomStartDate(toDateInputValue(firstDayLastMonth));
+      setCustomEndDate(toDateInputValue(lastDayLastMonth));
+    }
+  };
+
+  const handleCustomDateChange = (start: string, end: string) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setPeriod('CUSTOM');
+  };
+
+  const handleResetDateFilter = () => {
+    setPeriod('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
+
+  const getReadablePeriodLabel = (): string => {
+    if (customStartDate && customEndDate) {
+      return `Rentang: ${customStartDate} s/d ${customEndDate}`;
+    }
+    if (customStartDate) {
+      return `Mulai: ${customStartDate}`;
+    }
+    if (customEndDate) {
+      return `Akhir: ${customEndDate}`;
+    }
+    switch (period) {
+      case 'TODAY':
+        return 'Periode: Hari Ini';
+      case 'YESTERDAY':
+        return 'Periode: Kemarin';
+      case '7D':
+        return 'Periode: 7 Hari Terakhir';
+      case '30D':
+        return 'Periode: Bulan Ini';
+      case 'LAST_MONTH':
+        return 'Periode: Bulan Lalu';
+      default:
+        return 'Periode: Semua Waktu';
+    }
+  };
+
   // Filter posSales by period, custom date range, cashier, and search query
   const filteredSales = useMemo(() => {
     const now = new Date();
-    // Reference base date (simulated system date if in prototype or real current date)
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     return (actualSales || []).filter((sale) => {
@@ -153,21 +259,32 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
       // 3. Date Range Filter
       const saleDate = parseIndoDate(sale.time);
 
+      // If custom start or end date is set, enforce exact date bounds
+      if (customStartDate || customEndDate) {
+        if (!saleDate) return true;
+        if (customStartDate) {
+          const start = new Date(customStartDate + 'T00:00:00');
+          if (saleDate < start) return false;
+        }
+        if (customEndDate) {
+          const end = new Date(customEndDate + 'T23:59:59.999');
+          if (saleDate > end) return false;
+        }
+        return true;
+      }
+
       if (period === 'ALL') {
         return true;
       }
 
       if (!saleDate) {
-        // Fallback for items with non-parseable date strings
         return true;
       }
 
       const saleDay = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate()).getTime();
 
       if (period === 'TODAY') {
-        // Match today's day
         const todayTime = todayMidnight.getTime();
-        // Also support prototype date "26 Apr 2026"
         const isTodayText = sale.time && (sale.time.includes('26 Apr 2026') || sale.time.includes('Hari ini'));
         return saleDay === todayTime || isTodayText;
       }
@@ -180,7 +297,6 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
 
       if (period === '7D') {
         const sevenDaysAgo = todayMidnight.getTime() - 7 * 24 * 60 * 60 * 1000;
-        // In prototype reference year 2026
         const ref2026April7DaysAgo = new Date(2026, 3, 19).getTime();
         return saleDay >= sevenDaysAgo || saleDay >= ref2026April7DaysAgo;
       }
@@ -191,16 +307,10 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
         return saleDay >= thirtyDaysAgo || saleDay >= ref2026April30DaysAgo;
       }
 
-      if (period === 'CUSTOM') {
-        if (customStartDate) {
-          const start = new Date(customStartDate + 'T00:00:00');
-          if (saleDate < start) return false;
-        }
-        if (customEndDate) {
-          const end = new Date(customEndDate + 'T23:59:59');
-          if (saleDate > end) return false;
-        }
-        return true;
+      if (period === 'LAST_MONTH') {
+        const firstDayLastMonth = new Date(todayMidnight.getFullYear(), todayMidnight.getMonth() - 1, 1).getTime();
+        const lastDayLastMonth = new Date(todayMidnight.getFullYear(), todayMidnight.getMonth(), 0, 23, 59, 59).getTime();
+        return saleDate.getTime() >= firstDayLastMonth && saleDate.getTime() <= lastDayLastMonth;
       }
 
       return true;
@@ -446,12 +556,6 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
     document.body.removeChild(link);
   };
 
-  const handleResetDateFilter = () => {
-    setPeriod('ALL');
-    setCustomStartDate('');
-    setCustomEndDate('');
-  };
-
   return (
     <section id="view-laporan-penjualan-fisik" className="space-y-5">
       {/* Header */}
@@ -475,125 +579,132 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
             <span>Export CSV</span>
           </button>
           <button
-            onClick={() => window.print()}
-            className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            onClick={() => {
+              const validSales = filteredSales.filter((s) => s.status !== 'VOID');
+              const totalOmzet = validSales.reduce((acc, s) => acc + (s.totalRevenue || 0), 0);
+              const totalHpp = validSales.reduce((acc, s) => acc + (s.totalCost || 0), 0);
+              const totalLabaKotor = validSales.reduce((acc, s) => acc + (s.grossProfit || 0), 0);
+
+              const periodLabel = `${getReadablePeriodLabel()}${
+                selectedCashier !== 'ALL' ? ' | Kasir: ' + selectedCashier : ''
+              }`;
+
+              const htmlContent = generatePosReportHtml({
+                sales: filteredSales,
+                profile: activeProfile,
+                periodLabel,
+                operatorName,
+              });
+
+              setPrintData({
+                title: 'Laporan Penjualan Kasir POS Fisik',
+                periodLabel,
+                operatorName,
+                count: filteredSales.length,
+                totalNominal: totalOmzet,
+                totalProfit: totalLabaKotor,
+                htmlContent,
+                summaryItems: [
+                  { label: 'Total Faktur Sukses', value: `${validSales.length} Transaksi` },
+                  { label: 'Total Omzet Penjualan', value: formatRp(totalOmzet) },
+                  { label: 'Total Modal HPP', value: formatRp(totalHpp) },
+                  { label: 'Laba Kotor Kasir', value: formatRp(totalLabaKotor), isHighlight: true },
+                ],
+              });
+
+              setIsPrintModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
           >
-            <Printer className="w-4 h-4 text-slate-500" />
+            <Printer className="w-4 h-4 text-white" />
             <span>Cetak Laporan</span>
           </button>
         </div>
       </div>
 
-      {/* FILTER TANGGAL & RANGE PICKER CONTROL */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+      {/* FILTER TANGGAL & RANGE PICKER CONTROL (MULAI - AKHIR LAPORAN) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-blue-700" />
             <span className="text-xs font-bold text-slate-800">Filter Rentang Waktu Penjualan</span>
-            {period !== 'ALL' && (
-              <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                {filteredSales.length} Transaksi Terpilih
-              </span>
-            )}
+            <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+              {filteredSales.length} Transaksi Terpilih
+            </span>
           </div>
 
           {/* Quick Date Presets */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => setPeriod('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'ALL'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Semua Waktu
-            </button>
-            <button
-              onClick={() => setPeriod('TODAY')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'TODAY'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Hari Ini
-            </button>
-            <button
-              onClick={() => setPeriod('YESTERDAY')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'YESTERDAY'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Kemarin
-            </button>
-            <button
-              onClick={() => setPeriod('7D')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === '7D'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              7 Hari
-            </button>
-            <button
-              onClick={() => setPeriod('30D')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === '30D'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              30 Hari
-            </button>
-            <button
-              onClick={() => setPeriod('CUSTOM')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                period === 'CUSTOM'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Rentang Kustom
-            </button>
+            {[
+              { id: 'ALL', label: 'Semua Waktu' },
+              { id: 'TODAY', label: 'Hari Ini' },
+              { id: 'YESTERDAY', label: 'Kemarin' },
+              { id: '7D', label: '7 Hari' },
+              { id: '30D', label: 'Bulan Ini' },
+              { id: 'LAST_MONTH', label: 'Bulan Lalu' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleSetPreset(p.id as DatePeriodOption)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  period === p.id && !customStartDate && !customEndDate
+                    ? 'bg-blue-700 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Custom Date Range Inputs */}
-        {period === 'CUSTOM' && (
-          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs">
+        {/* Date Picker Range Inputs (Tanggal Mulai - Akhir Laporan) */}
+        <div className="flex items-center justify-between gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-700" />
+              <span>Rentang Tanggal Laporan:</span>
+            </span>
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">Mulai:</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-hidden bg-slate-50 text-slate-800"
-              />
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">Tanggal Mulai:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => handleCustomDateChange(e.target.value, customEndDate)}
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden font-medium text-slate-800 shadow-2xs"
+                />
+              </div>
+              <span className="text-xs font-semibold text-slate-400">s/d</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">Akhir Laporan:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => handleCustomDateChange(customStartDate, e.target.value)}
+                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden font-medium text-slate-800 shadow-2xs"
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500 font-medium">Sampai:</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="px-2.5 py-1.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-hidden bg-slate-50 text-slate-800"
-              />
-            </div>
-            {(customStartDate || customEndDate) && (
+
+            {(customStartDate || customEndDate || period !== 'ALL') && (
               <button
+                type="button"
                 onClick={handleResetDateFilter}
-                className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-red-700 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-lg flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                title="Hapus filter tanggal dan tampilkan semua"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Tanggal</span>
               </button>
             )}
           </div>
-        )}
+
+          <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+            {getReadablePeriodLabel()}
+          </span>
+        </div>
       </div>
 
       {/* KPI Cards: Revenue, Cost, Net Profit, Units Sold */}
@@ -1422,6 +1533,16 @@ export const LaporanPenjualanFisikView: React.FC<LaporanPenjualanFisikViewProps>
           </div>
         </div>
       )}
+
+      {/* Modal Pratinjau & Cetak Laporan */}
+      <ModalPrintReport
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        reportData={printData}
+        profile={activeProfile}
+        printerSettings={printerSettings}
+        onExportExcel={handleExportCSV}
+      />
     </section>
   );
 };

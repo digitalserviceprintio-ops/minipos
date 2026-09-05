@@ -16,6 +16,7 @@ import { AgentProfile, UserRole } from '../types';
 import { AuthUser } from './views/LoginView';
 import { subscribeSyncState, SyncState } from '../utils/googleSheetsService';
 import { DigitalClock } from './common/DigitalClock';
+import { PWAInstallButton } from './common/PWAInstallButton';
 
 interface HeaderProps {
   profile: AgentProfile;
@@ -98,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
             {profile.logoUrl ? (
               <img src={profile.logoUrl} className="w-full h-full object-cover" alt="Profile" />
             ) : (
-              <span>{initials}</span>
+              <img src="/logo.png" className="w-full h-full object-contain p-0.5 bg-white" alt="Mini ATM" />
             )}
           </div>
           <div className="hidden sm:flex flex-col">
@@ -199,6 +200,9 @@ export const Header: React.FC<HeaderProps> = ({
               : 'Hubungkan Sheets'}
           </span>
         </button>
+
+        {/* PWA Install Action */}
+        <PWAInstallButton variant="header" />
 
         {/* Quick New Trx Action */}
         <button

@@ -22,16 +22,20 @@ import {
   Camera,
   X,
 } from 'lucide-react';
-import { Product, StockAdjustmentLog, UserRole } from '../../types';
+import { Product, StockAdjustmentLog, UserRole, AgentProfile, PrinterSettings } from '../../types';
 import { formatRp } from '../../utils/formatters';
 import { ModalBarcodeCameraScanner } from '../modals/ModalBarcodeCameraScanner';
 import { playSuccessBeep, playErrorBeep } from '../../utils/audioFeedback';
+import { ModalPrintReport, ReportPrintData } from '../modals/ModalPrintReport';
+import { generateStockReportHtml } from '../../utils/reportPrinterService';
 
 interface StokBarangViewProps {
   products?: Product[];
   stockLogs?: StockAdjustmentLog[];
   currentRole: UserRole;
   operatorName?: string;
+  profile?: AgentProfile;
+  printerSettings?: PrinterSettings;
   onOpenNewProduct: (initialBarcode?: string) => void;
   onOpenEditProduct?: (product: Product) => void;
   onEditProduct?: (product: Product) => void;
@@ -45,11 +49,25 @@ interface StokBarangViewProps {
 
 type StockFilterStatus = 'ALL' | 'READY' | 'LOW' | 'EMPTY';
 
+const DEFAULT_STOCK_PROFILE: AgentProfile = {
+  storeName: 'TOKO & MINI ATM',
+  ownerName: 'Pemilik Toko',
+  phone: '-',
+  idAgent: '-',
+  address: 'Lokasi Usaha',
+  receiptHeader: 'Selamat Datang',
+  receiptFooter: 'Terima Kasih',
+  logoUrl: null,
+  paperWidth: '58mm',
+};
+
 export const StokBarangView: React.FC<StokBarangViewProps> = ({
   products = [],
   stockLogs = [],
   currentRole,
   operatorName = 'Operator',
+  profile = DEFAULT_STOCK_PROFILE,
+  printerSettings,
   onOpenNewProduct,
   onOpenEditProduct,
   onEditProduct,
@@ -70,6 +88,8 @@ export const StokBarangView: React.FC<StokBarangViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'katalog' | 'riwayat_mutasi'>('katalog');
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState<boolean>(false);
   const [scanToast, setScanToast] = useState<{ message: string; type: 'success' | 'info' | 'error'; barcode?: string } | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printData, setPrintData] = useState<ReportPrintData | null>(null);
 
   const handleBarcodeScanned = (scannedCode: string) => {
     const code = scannedCode.trim().toLowerCase();
@@ -235,9 +255,38 @@ export const StokBarangView: React.FC<StokBarangViewProps> = ({
     document.body.removeChild(link);
   };
 
-  // Print Stock Summary
+  // Print Stock Summary via Modal Print Report
   const handlePrintStock = () => {
-    window.print();
+    let filterLabel = 'Semua Stok';
+    if (stockStatus === 'READY') filterLabel = 'Stok Tersedia (Aman)';
+    if (stockStatus === 'LOW') filterLabel = 'Stok Menipis (Peringatan)';
+    if (stockStatus === 'EMPTY') filterLabel = 'Stok Habis (Kosong)';
+    if (selectedCat !== 'ALL') filterLabel += ` | Kategori: ${selectedCat}`;
+
+    const htmlContent = generateStockReportHtml({
+      products: filteredProducts,
+      profile,
+      filterLabel,
+      operatorName,
+    });
+
+    setPrintData({
+      title: 'Laporan Rekap Stok Barang Fisik',
+      periodLabel: filterLabel,
+      operatorName: operatorName || 'Petugas Gudang',
+      count: filteredProducts.length,
+      totalNominal: metrics.totalAssetValue,
+      totalProfit: metrics.totalPotentialProfit,
+      htmlContent,
+      summaryItems: [
+        { label: 'Total Macam SKU', value: `${metrics.totalItems} Produk` },
+        { label: 'Total Unit Fisik', value: `${metrics.totalUnits} Pcs` },
+        { label: 'Total Aset Modal (HPP)', value: formatRp(metrics.totalAssetValue) },
+        { label: 'Potensi Laba Kotor', value: formatRp(metrics.totalPotentialProfit), isHighlight: true },
+      ],
+    });
+
+    setIsPrintModalOpen(true);
   };
 
   return (
@@ -860,6 +909,16 @@ export const StokBarangView: React.FC<StokBarangViewProps> = ({
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onBarcodeDetected={(code) => handleBarcodeScanned(code)}
+      />
+
+      {/* Modal Pratinjau & Cetak Laporan Stok */}
+      <ModalPrintReport
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        reportData={printData}
+        profile={profile}
+        printerSettings={printerSettings}
+        onExportExcel={handleExportStockCSV}
       />
     </section>
   );

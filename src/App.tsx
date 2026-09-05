@@ -57,6 +57,7 @@ import { DatabaseSpreadsheetView } from './components/views/DatabaseSpreadsheetV
 import { BackupResetView } from './components/views/BackupResetView';
 import { TentangSistemView } from './components/views/TentangSistemView';
 import { SecurityAlertBanner } from './components/common/SecurityAlertBanner';
+import { PWAOfflineIndicator } from './components/common/PWAOfflineIndicator';
 import { SecurityThreatItem } from './types';
 import { subscribeToThreats, dismissActiveAlert, recordThreat } from './utils/threatDetector';
 import { sanitizeText } from './utils/securityCrypto';
@@ -1903,6 +1904,7 @@ export default function App() {
               profile={profile}
               currentRole={currentRole}
               operatorName={currentUser?.name || 'Operator'}
+              printerSettings={printerSettings}
               onOpenNewTrx={() => {
                 setEditingTrx(null);
                 setIsTrxModalOpen(true);
@@ -1990,6 +1992,9 @@ export default function App() {
             <LaporanDetailView
               transactions={transactions}
               accounts={accounts}
+              profile={profile}
+              printerSettings={printerSettings}
+              operatorName={currentUser?.name || 'Operator'}
               onExportCSV={handleExportCSV}
             />
           )}
@@ -2069,6 +2074,7 @@ export default function App() {
               profile={profile}
               currentRole={currentRole}
               operatorName={currentUser?.name || 'Kasir'}
+              printerSettings={printerSettings}
               onVoidSale={handleVoidPosSale}
               onReprintReceipt={handleReprintPOS}
               onNavigateToPOS={() => setActiveTab('kasir-fisik')}
@@ -2081,6 +2087,8 @@ export default function App() {
               stockLogs={stockLogs}
               currentRole={currentRole}
               operatorName={currentUser?.name || 'Operator'}
+              profile={profile}
+              printerSettings={printerSettings}
               onOpenNewProduct={(initialBarcode) => {
                 setEditingProduct(null);
                 setInitialProductBarcode(typeof initialBarcode === 'string' ? initialBarcode : '');
@@ -2111,6 +2119,8 @@ export default function App() {
               products={products}
               currentRole={currentRole}
               operatorName={currentUser?.name || 'Kasir'}
+              profile={profile}
+              printerSettings={printerSettings}
               onVoidSale={handleVoidPosSale}
               onReprintReceipt={handleReprintPOS}
               onNavigateToPOS={() => setActiveTab('kasir-fisik')}
@@ -2411,6 +2421,9 @@ export default function App() {
         userCount={users.length}
         memberCount={members.length}
       />
+
+      {/* PWA Network Offline State Banner */}
+      <PWAOfflineIndicator />
     </div>
   );
 }

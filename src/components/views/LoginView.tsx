@@ -27,6 +27,7 @@ import { AgentProfile, AppUser, UserRole } from '../../types';
 import { useAppVersion } from '../../utils/versionManager';
 import { ModalVersionInfo } from '../modals/ModalVersionInfo';
 import { TransactionVectorIllustration } from '../illustrations/TransactionVectorIllustration';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 export interface AuthUser {
   id?: string;
@@ -257,15 +258,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <div className="flex items-center gap-3.5">
               <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-blue-600 to-sky-400 p-0.5 shadow-md shadow-blue-500/20 shrink-0">
                 <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center overflow-hidden">
-                  {profile.logoUrl ? (
-                    <img
-                      src={profile.logoUrl}
-                      alt="Logo Outlet"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-blue-600" />
-                  )}
+                  <img
+                    src={profile.logoUrl || '/logo.png'}
+                    alt="Logo Mini ATM"
+                    className="w-full h-full object-contain p-0.5"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
               </div>
 
@@ -324,6 +322,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <Receipt className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="font-semibold truncate">Struk Thermal 58/80</span>
               </div>
+            </div>
+
+            {/* PWA Install Button for Mobile, Tablet, and Desktop */}
+            <div className="pt-2">
+              <PWAInstallButton variant="sidebar" />
             </div>
           </div>
 

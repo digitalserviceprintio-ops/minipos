@@ -61,7 +61,7 @@ export const INITIAL_AGENT_PROFILE: AgentProfile = {
   address: 'Jl. Merdeka No. 45, Kecamatan Sukajadi',
   receiptHeader: 'Agen Link & Multi Payment Outlet',
   receiptFooter: 'Terima Kasih Telah Bertransaksi\nSimpan Struk Ini Sebagai Bukti Sah',
-  logoUrl: null,
+  logoUrl: '/logo.png',
   paperWidth: '58mm',
 };
 

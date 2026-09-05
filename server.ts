@@ -359,6 +359,9 @@ app.post('/api/security/clear-alerts', (req, res) => {
   });
 });
 
+// Serve public assets (PWA icons, manifest, logo)
+app.use(express.static(path.join(process.cwd(), 'public')));
+
 // ============================================================================
 // 6. VITE MIDDLEWARE (DEV) & STATIC SERVING (PROD)
 // ============================================================================

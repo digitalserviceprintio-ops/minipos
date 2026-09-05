@@ -24,11 +24,14 @@ import {
   X,
   Share2,
   SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
-import { Account, Transaction, TransactionType, UserRole, AgentProfile } from '../../types';
+import { Account, Transaction, TransactionType, UserRole, AgentProfile, PrinterSettings } from '../../types';
 import { formatRp, formatDateTime } from '../../utils/formatters';
 import { getSecuritySettings, maskCustomerPhone, maskCustomerAccount } from '../../utils/securityCrypto';
 import { exportTransactionsToExcel } from '../../utils/excelExport';
+import { ModalPrintReport, ReportPrintData } from '../modals/ModalPrintReport';
+import { generateAgentReportHtml } from '../../utils/reportPrinterService';
 
 interface RiwayatTransaksiAgenViewProps {
   transactions: Transaction[];
@@ -36,6 +39,7 @@ interface RiwayatTransaksiAgenViewProps {
   profile: AgentProfile;
   currentRole: UserRole;
   operatorName?: string;
+  printerSettings?: PrinterSettings;
   onOpenNewTrx: () => void;
   onEditTrx: (trx: Transaction) => void;
   onViewReceipt: (trx: Transaction) => void;
@@ -43,7 +47,15 @@ interface RiwayatTransaksiAgenViewProps {
   onNavigateToInputTrx?: () => void;
 }
 
-export type PeriodFilter = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'CUSTOM';
+export type PeriodFilter = 'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'LAST_MONTH' | 'CUSTOM';
+
+// Format Date to YYYY-MM-DD for HTML input
+function toDateInputValue(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // Helper to parse date from various formats
 function parseTrxDate(dateStr?: string): Date | null {
@@ -51,12 +63,21 @@ function parseTrxDate(dateStr?: string): Date | null {
   const isoDate = new Date(dateStr);
   if (!isNaN(isoDate.getTime())) return isoDate;
 
+  // Handle DD/MM/YYYY or DD-MM-YYYY
+  const slashMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slashMatch) {
+    const d = parseInt(slashMatch[1], 10);
+    const m = parseInt(slashMatch[2], 10) - 1;
+    const y = parseInt(slashMatch[3], 10);
+    return new Date(y, m, d);
+  }
+
   const indonesianMonths: { [key: string]: number } = {
     jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5,
     jul: 6, agu: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11,
   };
 
-  const parts = dateStr.trim().split(/\s+/);
+  const parts = dateStr.trim().split(/[\s,]+/);
   if (parts.length >= 3) {
     const day = parseInt(parts[0], 10);
     const monthKey = parts[1].toLowerCase().slice(0, 3);
@@ -83,6 +104,7 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
   profile,
   currentRole,
   operatorName = 'Operator',
+  printerSettings,
   onOpenNewTrx,
   onEditTrx,
   onViewReceipt,
@@ -105,6 +127,8 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
   const [selectedDetailTrx, setSelectedDetailTrx] = useState<Transaction | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printData, setPrintData] = useState<ReportPrintData | null>(null);
 
   const securitySettings = getSecuritySettings();
 
@@ -119,8 +143,79 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleFilterChange = () => {
+    setCurrentPage(1);
+  };
+
+  // Preset period handler
+  const handleSetPreset = (preset: PeriodFilter) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    setPeriod(preset);
+
+    if (preset === 'ALL') {
+      setCustomStartDate('');
+      setCustomEndDate('');
+    } else if (preset === 'TODAY') {
+      const tStr = toDateInputValue(today);
+      setCustomStartDate(tStr);
+      setCustomEndDate(tStr);
+    } else if (preset === 'YESTERDAY') {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const yStr = toDateInputValue(yesterday);
+      setCustomStartDate(yStr);
+      setCustomEndDate(yStr);
+    } else if (preset === '7D') {
+      const past7 = new Date(today);
+      past7.setDate(today.getDate() - 6);
+      setCustomStartDate(toDateInputValue(past7));
+      setCustomEndDate(toDateInputValue(today));
+    } else if (preset === '30D') {
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      setCustomStartDate(toDateInputValue(firstDay));
+      setCustomEndDate(toDateInputValue(today));
+    } else if (preset === 'LAST_MONTH') {
+      const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      setCustomStartDate(toDateInputValue(firstDayLastMonth));
+      setCustomEndDate(toDateInputValue(lastDayLastMonth));
+    }
+    handleFilterChange();
+  };
+
+  const handleCustomDateChange = (start: string, end: string) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setPeriod('CUSTOM');
+    handleFilterChange();
+  };
+
+  const handleResetDateRange = () => {
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setPeriod('ALL');
+    handleFilterChange();
+  };
+
   // Date range checking
   const isDateInPeriod = (trxTime: string): boolean => {
+    // If custom start or end date is set
+    if (customStartDate || customEndDate) {
+      const trxDate = parseTrxDate(trxTime);
+      if (!trxDate) return true;
+
+      if (customStartDate) {
+        const start = new Date(customStartDate + 'T00:00:00');
+        if (trxDate < start) return false;
+      }
+      if (customEndDate) {
+        const end = new Date(customEndDate + 'T23:59:59.999');
+        if (trxDate > end) return false;
+      }
+      return true;
+    }
+
     if (period === 'ALL') return true;
     const trxDate = parseTrxDate(trxTime);
     if (!trxDate) return true;
@@ -131,39 +226,21 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
     if (period === 'TODAY') {
       return trxDate >= today;
     }
-
     if (period === 'YESTERDAY') {
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
       return trxDate >= yesterday && trxDate < today;
     }
-
     if (period === '7D') {
       const past7 = new Date(today);
       past7.setDate(today.getDate() - 7);
       return trxDate >= past7;
     }
-
     if (period === '30D') {
       const past30 = new Date(today);
       past30.setDate(today.getDate() - 30);
       return trxDate >= past30;
     }
-
-    if (period === 'CUSTOM') {
-      if (customStartDate) {
-        const start = new Date(customStartDate);
-        start.setHours(0, 0, 0, 0);
-        if (trxDate < start) return false;
-      }
-      if (customEndDate) {
-        const end = new Date(customEndDate);
-        end.setHours(23, 59, 59, 999);
-        if (trxDate > end) return false;
-      }
-      return true;
-    }
-
     return true;
   };
 
@@ -282,17 +359,36 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
     return sortedTransactions.slice(start, start + itemsPerPage);
   }, [sortedTransactions, currentPage, itemsPerPage]);
 
-  // Reset pagination on filter change
-  const handleFilterChange = () => {
-    setCurrentPage(1);
+  // Format readable period label
+  const getReadablePeriodLabel = (): string => {
+    if (customStartDate && customEndDate) {
+      return `Rentang: ${customStartDate} s/d ${customEndDate}`;
+    }
+    if (customStartDate) {
+      return `Mulai: ${customStartDate}`;
+    }
+    if (customEndDate) {
+      return `Sampai: ${customEndDate}`;
+    }
+    switch (period) {
+      case 'TODAY':
+        return 'Periode: Hari Ini';
+      case 'YESTERDAY':
+        return 'Periode: Kemarin';
+      case '7D':
+        return 'Periode: 7 Hari Terakhir';
+      case '30D':
+        return 'Periode: Bulan Ini';
+      case 'LAST_MONTH':
+        return 'Periode: Bulan Lalu';
+      default:
+        return 'Periode: Semua Waktu';
+    }
   };
 
   // Export Excel
   const handleExportExcel = () => {
-    let filterLabel = `Periode: ${period}`;
-    if (period === 'CUSTOM') {
-      filterLabel = `Kustom: ${customStartDate || '-'} s/d ${customEndDate || '-'}`;
-    }
+    let filterLabel = getReadablePeriodLabel();
     if (selectedType !== 'SEMUA') {
       filterLabel += ` | Jenis: ${selectedType}`;
     }
@@ -302,101 +398,40 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
     exportTransactionsToExcel(filteredTransactions, accounts, profile, filterLabel);
   };
 
-  // Print Rekap Window
+  // Print Rekap Window & Modal
   const handlePrintRekap = () => {
-    const printWindow = window.open('', '_blank', 'width=850,height=900');
-    if (!printWindow) return;
+    let filterLabel = getReadablePeriodLabel();
+    if (selectedType !== 'SEMUA') {
+      filterLabel += ` | Jenis: ${selectedType}`;
+    }
+    if (selectedStatus !== 'SEMUA') {
+      filterLabel += ` | Status: ${selectedStatus}`;
+    }
 
-    const rowsHtml = filteredTransactions
-      .map((t, idx) => {
-        const isVoid = t.status === 'VOID';
-        return `
-          <tr style="${isVoid ? 'color: #991b1b; text-decoration: line-through; background-color: #fef2f2;' : ''}">
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center;">${idx + 1}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-family: monospace;">#${t.id}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.time}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: bold;">${t.type}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.cust}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${t.target}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold;">Rp ${(t.nominal || 0).toLocaleString('id-ID')}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right;">Rp ${(t.feeCust || 0).toLocaleString('id-ID')}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #047857;">Rp ${((t.feeCust || 0) - (t.feeAdmin || 0)).toLocaleString('id-ID')}</td>
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center;">${t.status}</td>
-          </tr>
-        `;
-      })
-      .join('');
+    const htmlContent = generateAgentReportHtml({
+      transactions: filteredTransactions,
+      profile,
+      periodLabel: filterLabel,
+      operatorName,
+    });
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Rekap Riwayat Transaksi Agen - ${profile.storeName}</title>
-        <style>
-          body { font-family: sans-serif; margin: 24px; color: #1e293b; font-size: 11px; }
-          h2 { margin: 0 0 4px 0; font-size: 16px; }
-          p { margin: 2px 0; color: #64748b; }
-          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-          th { background: #0f172a; color: #ffffff; padding: 8px; font-size: 10px; border: 1px solid #0f172a; text-align: left; }
-          .summary-box { display: flex; gap: 16px; margin-top: 16px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
-          .summary-item { flex: 1; }
-          .summary-item span { display: block; font-size: 10px; color: #64748b; }
-          .summary-item strong { font-size: 13px; color: #0f172a; }
-        </style>
-      </head>
-      <body>
-        <h2>${profile.storeName} - Laporan Rekap Riwayat Transaksi Agen</h2>
-        <p>${profile.address || ''} | Telp: ${profile.phone || ''} | ID Agen: ${profile.idAgent || '-'}</p>
-        <p>Waktu Cetak: ${formatDateTime()} | Dicetak oleh: ${operatorName}</p>
+    setPrintData({
+      title: 'Rekap Riwayat Transaksi Agen',
+      periodLabel: filterLabel,
+      operatorName: operatorName || 'Petugas Agen',
+      count: kpis.countTotal,
+      totalNominal: kpis.totalNominal,
+      totalProfit: kpis.totalNetProfit,
+      htmlContent,
+      summaryItems: [
+        { label: 'Total Transaksi Sukses', value: `${kpis.countSuccess} Trx` },
+        { label: 'Total Volume / Omzet', value: formatRp(kpis.totalNominal) },
+        { label: 'Total Fee Nasabah', value: formatRp(kpis.totalFeeCust) },
+        { label: 'Laba Bersih Agen', value: formatRp(kpis.totalNetProfit), isHighlight: true },
+      ],
+    });
 
-        <div class="summary-box">
-          <div class="summary-item">
-            <span>Total Transaksi</span>
-            <strong>${kpis.countTotal} Transaksi (${kpis.countSuccess} Sukses)</strong>
-          </div>
-          <div class="summary-item">
-            <span>Total Perputaran (Volume)</span>
-            <strong>Rp ${kpis.totalNominal.toLocaleString('id-ID')}</strong>
-          </div>
-          <div class="summary-item">
-            <span>Total Fee Nasabah</span>
-            <strong>Rp ${kpis.totalFeeCust.toLocaleString('id-ID')}</strong>
-          </div>
-          <div class="summary-item">
-            <span>Keuntungan Bersih Agen</span>
-            <strong style="color: #047857;">Rp ${kpis.totalNetProfit.toLocaleString('id-ID')}</strong>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 30px; text-align: center;">No</th>
-              <th>ID</th>
-              <th>Waktu</th>
-              <th>Layanan</th>
-              <th>Nasabah</th>
-              <th>Tujuan / Rekening</th>
-              <th style="text-align: right;">Nominal</th>
-              <th style="text-align: right;">Fee</th>
-              <th style="text-align: right;">Profit Agen</th>
-              <th style="text-align: center;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+    setIsPrintModalOpen(true);
   };
 
   // Helper Badge Color for Transaction Type
@@ -553,82 +588,102 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
 
       {/* Filter Bar & Controls */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
-        {/* Period Filter Buttons */}
-        <div className="flex items-center justify-between flex-wrap gap-2.5 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-slate-600 mr-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              <span>Periode:</span>
-            </span>
-            {[
-              { id: 'ALL', label: 'Semua' },
-              { id: 'TODAY', label: 'Hari Ini' },
-              { id: 'YESTERDAY', label: 'Kemarin' },
-              { id: '7D', label: '7 Hari Terakhir' },
-              { id: '30D', label: 'Bulan Ini' },
-              { id: 'CUSTOM', label: 'Kustom Tanggal' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setPeriod(p.id as PeriodFilter);
-                  handleFilterChange();
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  period === p.id
-                    ? 'bg-blue-700 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Privacy unmask toggle */}
-          <button
-            type="button"
-            onClick={() => setUnmaskPrivacy(!unmaskPrivacy)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors cursor-pointer ${
-              unmaskPrivacy
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-            title="Buka / Sensor nomor HP & nomor rekening pelanggan di tabel"
-          >
-            {unmaskPrivacy ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            <span>{unmaskPrivacy ? 'Privasi: Terbuka' : 'Privasi: Sensor Aktif'}</span>
-          </button>
-        </div>
-
-        {/* Custom Date Inputs (if CUSTOM period selected) */}
-        {period === 'CUSTOM' && (
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 flex-wrap">
-            <span className="text-xs font-bold text-slate-700">Rentang Tanggal:</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => {
-                  setCustomStartDate(e.target.value);
-                  handleFilterChange();
-                }}
-                className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
-              />
-              <span className="text-xs text-slate-400">s/d</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => {
-                  setCustomEndDate(e.target.value);
-                  handleFilterChange();
-                }}
-                className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
-              />
+        {/* Period Filter Buttons & Date Range Controls */}
+        <div className="space-y-2.5 pb-3 border-b border-slate-100">
+          <div className="flex items-center justify-between flex-wrap gap-2.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-slate-600 mr-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span>Periode Cepat:</span>
+              </span>
+              {[
+                { id: 'ALL', label: 'Semua' },
+                { id: 'TODAY', label: 'Hari Ini' },
+                { id: 'YESTERDAY', label: 'Kemarin' },
+                { id: '7D', label: '7 Hari Terakhir' },
+                { id: '30D', label: 'Bulan Ini' },
+                { id: 'LAST_MONTH', label: 'Bulan Lalu' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleSetPreset(p.id as PeriodFilter)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    period === p.id
+                      ? 'bg-blue-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
+
+            {/* Privacy unmask toggle */}
+            <button
+              type="button"
+              onClick={() => setUnmaskPrivacy(!unmaskPrivacy)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                unmaskPrivacy
+                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              }`}
+              title="Buka / Sensor nomor HP & nomor rekening pelanggan di tabel"
+            >
+              {unmaskPrivacy ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>{unmaskPrivacy ? 'Privasi: Terbuka' : 'Privasi: Sensor Aktif'}</span>
+            </button>
           </div>
-        )}
+
+          {/* Dedicated Date Range Picker (Mulai - Sampai) */}
+          <div className="flex items-center justify-between gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200 flex-wrap">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-700" />
+                <span>Rentang Tanggal (Mulai - Sampai):</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-slate-500">Mulai:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => handleCustomDateChange(e.target.value, customEndDate)}
+                    className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden font-medium text-slate-800 shadow-2xs"
+                  />
+                </div>
+                <span className="text-xs font-semibold text-slate-400">s/d</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-slate-500">Sampai:</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => handleCustomDateChange(customStartDate, e.target.value)}
+                    className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-hidden font-medium text-slate-800 shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {(customStartDate || customEndDate) && (
+                <button
+                  type="button"
+                  onClick={handleResetDateRange}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-red-700 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-lg flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                  title="Hapus filter rentang tanggal dan tampilkan semua waktu"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Tanggal</span>
+                </button>
+              )}
+            </div>
+
+            {(customStartDate || customEndDate || period !== 'ALL') && (
+              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+                {getReadablePeriodLabel()}
+              </span>
+            )}
+          </div>
+        </div>
 
         {/* Detailed Dropdowns & Search */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -1212,6 +1267,16 @@ export const RiwayatTransaksiAgenView: React.FC<RiwayatTransaksiAgenViewProps> =
           </div>
         </div>
       )}
+
+      {/* Modal Pratinjau & Cetak Laporan */}
+      <ModalPrintReport
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        reportData={printData}
+        profile={profile}
+        printerSettings={printerSettings}
+        onExportExcel={handleExportExcel}
+      />
     </div>
   );
 };

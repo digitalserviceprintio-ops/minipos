@@ -32,10 +32,14 @@ import {
   Zap,
   Clock,
   Send,
+  Smartphone,
+  Monitor,
+  Download,
 } from 'lucide-react';
 import { AgentProfile, UserRole } from '../../types';
 import { useAppVersion } from '../../utils/versionManager';
 import { AuthUser } from './LoginView';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface TentangSistemViewProps {
   profile: AgentProfile;
@@ -48,7 +52,7 @@ type SubSection = 'overview' | 'panduan' | 'kebijakan' | 'arsitektur' | 'develop
 
 interface GuideItem {
   id: string;
-  category: 'MINI_ATM' | 'POS' | 'MEMBER' | 'STOK' | 'KEUANGAN' | 'MULTIUSER' | 'PRINTER' | 'SHEETS' | 'BACKUP';
+  category: 'MINI_ATM' | 'POS' | 'MEMBER' | 'STOK' | 'KEUANGAN' | 'MULTIUSER' | 'PRINTER' | 'SHEETS' | 'BACKUP' | 'PWA';
   categoryLabel: string;
   categoryIcon: any;
   title: string;
@@ -237,6 +241,25 @@ const GUIDE_DATA: GuideItem[] = [
     ],
     warning: 'Sangat disarankan melakukan Backup file .JSON minimal satu minggu sekali atau sebelum melakukan pembersihan browser.',
     badge: 'Cadangan',
+  },
+  {
+    id: 'guide-pwa-install',
+    category: 'PWA',
+    categoryLabel: 'Aplikasi PWA Multi-Device',
+    categoryIcon: Smartphone,
+    title: 'Panduan Install Aplikasi di Desktop, Tablet, & Smartphone (PWA)',
+    summary: 'Cara memasang Mini ATM sebagai aplikasi mandiri di Windows, Mac, iPad, Tablet Android, dan HP tanpa perlu Play Store.',
+    steps: [
+      'Komputer / Laptop (Chrome / Edge): Klik tombol "Install App" di bilah atas atau menu samping, lalu konfirmasi "Install" pada popup browser. Ikon Mini ATM akan muncul di desktop dan taskbar.',
+      'Android Smartphone & Tablet: Buka aplikasi di Chrome, klik tombol "Install Aplikasi" atau buka menu titik tiga (⋮) di kanan atas lalu pilih "Tambahkan ke Layar Utama" (Add to Home screen) atau "Install Aplikasi".',
+      'iPhone & iPad (iOS Safari): Buka di Safari, ketuk tombol Bagikan (Share / kotak bertanda panah ke atas), gulir ke bawah lalu pilih "Tambah ke Layar Utama" (Add to Home Screen).',
+      'Setelah terinstall, aplikasi dapat dibuka langsung dari layar utama dalam mode Full Screen (layar penuh) tanpa address bar browser.',
+      'Aplikasi mendukung mode offline: Anda tetap bisa membuka dan menggunakan sistem kasir meskipun jaringan internet sedang tidak stabil.',
+    ],
+    tips: [
+      'Tampilan otomatis menyesuaikan secara responsif untuk layar lebar monitor kasir, layar sentuh tablet EDC, maupun layar smartphone potret.',
+    ],
+    badge: 'Multi-Device',
   },
 ];
 
@@ -430,28 +453,39 @@ export const TentangSistemView: React.FC<TentangSistemViewProps> = ({
           {/* System Identity Card */}
           <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/80 shadow-xs space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-blue-600">
-                  Profil Sistem & Toko Terpasang
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-white p-1 border border-slate-200 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
+                  <img
+                    src={profile.logoUrl || '/logo.png'}
+                    alt="Logo Mini ATM"
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
-                <h2 className="text-2xl font-bold text-slate-900 mt-1">
-                  {profile.storeName}
-                </h2>
-                <p className="text-sm text-slate-600 mt-0.5">
-                  Pemilik Toko: <span className="font-semibold text-slate-800">{profile.ownerName}</span> • ID Agen: <span className="font-mono font-bold text-blue-700">{profile.idAgent}</span>
-                </p>
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                    Profil Sistem & Toko Terpasang
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 mt-1">
+                    {profile.storeName}
+                  </h2>
+                  <p className="text-sm text-slate-600 mt-0.5">
+                    Pemilik Toko: <span className="font-semibold text-slate-800">{profile.ownerName}</span> • ID Agen: <span className="font-mono font-bold text-blue-700">{profile.idAgent}</span>
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <PWAInstallButton variant="header" />
                 <button
                   onClick={() => onNavigateTab('profil-agen')}
-                  className="px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
                   Edit Profil Toko
                 </button>
                 <button
                   onClick={() => onNavigateTab('setting-printer')}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
                   Setting Printer
                 </button>

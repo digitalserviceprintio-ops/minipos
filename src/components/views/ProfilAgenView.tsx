@@ -107,11 +107,15 @@ export const ProfilAgenView: React.FC<ProfilAgenViewProps> = ({ profile, onSaveP
                 {formData.logoUrl ? (
                   <img
                     src={formData.logoUrl}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain p-1"
                     alt="Logo Profil"
                   />
                 ) : (
-                  <span>{initials}</span>
+                  <img
+                    src="/logo.png"
+                    className="w-full h-full object-contain p-1"
+                    alt="Logo Default"
+                  />
                 )}
               </div>
 
