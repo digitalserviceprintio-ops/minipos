@@ -1,0 +1,204 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default deny everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'password' || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'digitalserviceprint.io@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    // Validation Helpers
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.username is string && data.username.size() > 0 && data.username.size() <= 50 &&
+             data.role in ['Admin', 'Kasir'] &&
+             data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    function isValidStoreProfile(data, userId) {
+      return data.ownerId == userId &&
+             data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 120 &&
+             data.ownerName is string && data.ownerName.size() > 0 && data.ownerName.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 30 &&
+             data.idAgent is string && data.idAgent.size() > 0 && data.idAgent.size() <= 50;
+    }
+
+    function isValidAccount(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.type in ['Kas', 'Bank', 'E-Wallet'] &&
+             data.balance is number;
+    }
+
+    function isValidTransaction(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.time is string && data.time.size() <= 40 &&
+             data.type in ['TARIK TUNAI', 'SETOR TUNAI', 'TRANSFER', 'PEMBAYARAN'] &&
+             data.cust is string && data.cust.size() > 0 && data.cust.size() <= 100 &&
+             data.nominal is number &&
+             data.status in ['SUCCESS', 'VOID'] &&
+             data.accountId is string && data.accountId.size() <= 100;
+    }
+
+    function isValidProduct(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             data.price is number &&
+             data.stock is number;
+    }
+
+    function isValidPosSale(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.invoiceNumber is string && data.invoiceNumber.size() <= 50 &&
+             data.time is string && data.time.size() <= 40 &&
+             data.cashierName is string && data.cashierName.size() <= 100 &&
+             data.totalRevenue is number &&
+             data.paymentMethod is string && data.paymentMethod.size() <= 50;
+    }
+
+    function isValidCashMutation(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.time is string && data.time.size() <= 40 &&
+             data.accountId is string && data.accountId.size() <= 100 &&
+             data.type in ['MASUK', 'KELUAR', 'TRANSFER_INTERNAL'] &&
+             data.amount is number &&
+             data.description is string && data.description.size() <= 250;
+    }
+
+    function isValidCustomerMember(data, userId) {
+      return data.ownerId == userId &&
+             data.id is string && isValidId(data.id) &&
+             data.memberNumber is string && data.memberNumber.size() <= 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 30 &&
+             data.points is number &&
+             data.status in ['ACTIVE', 'INACTIVE'];
+    }
+
+    // Connection testing doc
+    match /test/{testId} {
+      allow read: if isSignedIn();
+      allow write: if isBootstrappedAdmin();
+    }
+
+    // Admins registry collection
+    match /admins/{adminUid} {
+      allow read: if isSignedIn();
+      allow write: if isBootstrappedAdmin();
+    }
+
+    // User Profile Document
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isBootstrappedAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && (
+        incoming().role == 'Kasir' || isBootstrappedAdmin()
+      );
+      allow update: if (isOwner(userId) || isBootstrappedAdmin()) && isValidUserProfile(incoming()) && incoming().userId == existing().userId && (
+        incoming().role == existing().role || isBootstrappedAdmin()
+      );
+      allow delete: if isBootstrappedAdmin();
+
+      // Subcollection: Store Profile
+      match /storeProfile/{profileId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(profileId) && isValidStoreProfile(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(profileId) && isValidStoreProfile(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: Accounts
+      match /accounts/{accountId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(accountId) && isValidAccount(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(accountId) && isValidAccount(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: Transactions
+      match /transactions/{transactionId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: Products (Inventory)
+      match /products/{productId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(productId) && isValidProduct(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(productId) && isValidProduct(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: POS Sales
+      match /posSales/{saleId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(saleId) && isValidPosSale(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(saleId) && isValidPosSale(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: Cash Mutations
+      match /mutations/{mutationId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(mutationId) && isValidCashMutation(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(mutationId) && isValidCashMutation(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+
+      // Subcollection: Customer Members
+      match /members/{memberId} {
+        allow get: if isOwner(userId) || isBootstrappedAdmin();
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isOwner(userId) && isValidId(memberId) && isValidCustomerMember(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(memberId) && isValidCustomerMember(incoming(), userId) && incoming().ownerId == existing().ownerId;
+        allow delete: if isOwner(userId) || isBootstrappedAdmin();
+      }
+    }
+  }
+}

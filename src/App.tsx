@@ -108,6 +108,8 @@ import {
   saveUserStorageItem,
   createFreshUserData,
 } from './utils/userStorage';
+import { auth, onAuthStateChanged, logoutFirebase } from './firebase';
+import { syncTransactionToFirestore } from './utils/firestoreSync';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 
 export default function App() {
@@ -490,6 +492,38 @@ export default function App() {
     localStorage.setItem('miniatm_role', currentRole);
   }, [currentRole]);
 
+  // Synchronize Firebase auth state with application session
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const displayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'User Cloud';
+        const username = fbUser.email?.split('@')[0] || fbUser.uid.slice(0, 8);
+        const initials =
+          displayName
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase() || 'FB';
+
+        setCurrentUser((prev) => {
+          if (prev?.id === fbUser.uid) return prev;
+          const userObj: AuthUser = {
+            id: fbUser.uid,
+            username,
+            name: displayName,
+            role: 'Admin',
+            avatarInitials: initials,
+          };
+          localStorage.setItem('miniatm_current_user', JSON.stringify(userObj));
+          return userObj;
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const handleLoginSuccess = (user: AuthUser) => {
     setCurrentUser(user);
     setCurrentRole(user.role);
@@ -510,6 +544,9 @@ export default function App() {
     setIsLogoutModalOpen(false);
     setCurrentUser(null);
     localStorage.removeItem('miniatm_current_user');
+    logoutFirebase().catch(() => {
+      // Ignored if not logged into Firebase
+    });
   };
 
   const handleRoleChange = (role: UserRole) => {
@@ -1800,38 +1837,38 @@ export default function App() {
   }
 
   return (
-    <div className="text-slate-800 antialiased bg-slate-100 min-h-screen flex flex-col font-sans">
-      {/* Top Header */}
-      <Header
+    <div className="text-slate-800 antialiased bg-slate-100 min-h-screen flex font-sans">
+      {/* Sidebar: Left Column (Desktop) / Sliding Drawer (Mobile) */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
         profile={profile}
-        currentRole={currentRole}
-        setRole={handleRoleChange}
-        toggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-        onOpenNewTrx={() => {
-          setEditingTrx(null);
-          setIsTrxModalOpen(true);
-        }}
-        onExportCSV={handleExportCSV}
+        trxCount={transactions.length}
+        posSalesCount={posSales.length}
+        userCount={users.length}
+        memberCount={members.length}
         currentUser={currentUser}
+        currentRole={currentRole}
         onLogout={handleLogout}
-        onNavigateToSpreadsheet={() => setActiveTab('database-spreadsheet')}
       />
 
-      <div className="flex flex-1 relative">
-        {/* Sidebar */}
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
+      {/* Main Content Column: Top Header + Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        <Header
           profile={profile}
-          trxCount={transactions.length}
-          posSalesCount={posSales.length}
-          userCount={users.length}
-          memberCount={members.length}
-          currentUser={currentUser}
           currentRole={currentRole}
+          setRole={handleRoleChange}
+          toggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onOpenNewTrx={() => {
+            setEditingTrx(null);
+            setIsTrxModalOpen(true);
+          }}
+          onExportCSV={handleExportCSV}
+          currentUser={currentUser}
           onLogout={handleLogout}
+          onNavigateToSpreadsheet={() => setActiveTab('database-spreadsheet')}
         />
 
         {/* Main Content Area */}

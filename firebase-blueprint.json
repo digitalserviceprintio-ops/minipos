@@ -1,0 +1,494 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User system profile for authentication and multi-role access control",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique Firebase Authentication UID"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "description": "User account email address"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Full display name of the user"
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Username handle for the user"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Kasir"],
+          "description": "Application permission role"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the user account was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the user account was last updated"
+        }
+      },
+      "required": ["userId", "name", "username", "role", "createdAt"]
+    },
+    "StoreProfile": {
+      "title": "Agent Store Profile",
+      "description": "Store operational metadata, contact details, and receipt layout settings",
+      "type": "object",
+      "properties": {
+        "storeName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Business or outlet name"
+        },
+        "ownerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Name of the business owner or agent"
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "Contact phone number of the outlet"
+        },
+        "idAgent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Official agent identification code"
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Physical address of the store"
+        },
+        "receiptHeader": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Header text printed on receipts"
+        },
+        "receiptFooter": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Footer note printed on receipts"
+        },
+        "paperWidth": {
+          "type": "string",
+          "enum": ["58mm", "80mm"],
+          "description": "Printer paper width standard"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of last profile update"
+        }
+      },
+      "required": ["storeName", "ownerName", "phone", "idAgent", "ownerId"]
+    },
+    "Account": {
+      "title": "Financial Account",
+      "description": "Cash register drawer or bank account balance entity",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique account identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Account name (e.g. Kas Tunai Laci, BRI Agen)"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["Kas", "Bank", "E-Wallet"],
+          "description": "Type classification of the financial account"
+        },
+        "balance": {
+          "type": "number",
+          "description": "Current balance in Rupiah"
+        },
+        "accountNumber": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Bank account number or internal code"
+        },
+        "bankName": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Name of the affiliated bank if applicable"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when balance was last modified"
+        }
+      },
+      "required": ["id", "name", "type", "balance", "ownerId"]
+    },
+    "Transaction": {
+      "title": "Agent Mini ATM Transaction",
+      "description": "Financial service transaction record (Cash withdrawal, transfer, etc.)",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique transaction code"
+        },
+        "time": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Date and time of transaction"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["TARIK TUNAI", "SETOR TUNAI", "TRANSFER", "PEMBAYARAN"],
+          "description": "Service category of the transaction"
+        },
+        "cust": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Name of the customer"
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Target account, destination bank, or bill ID"
+        },
+        "nominal": {
+          "type": "number",
+          "description": "Nominal principal transaction value"
+        },
+        "feeCust": {
+          "type": "number",
+          "description": "Fee charged to customer"
+        },
+        "feeAdmin": {
+          "type": "number",
+          "description": "Admin operational fee cost"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SUCCESS", "VOID"],
+          "description": "Current status of the transaction"
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Associated financial account used"
+        },
+        "phoneCust": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Phone number of the customer"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Optional notes or remarks"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        }
+      },
+      "required": ["id", "time", "type", "cust", "nominal", "status", "accountId", "ownerId"]
+    },
+    "Product": {
+      "title": "POS Inventory Product",
+      "description": "Product catalog and stock item for POS cashier sales",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique product ID"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Product display name"
+        },
+        "price": {
+          "type": "number",
+          "description": "Selling retail price"
+        },
+        "buyPrice": {
+          "type": "number",
+          "description": "Wholesale acquisition cost price"
+        },
+        "stock": {
+          "type": "number",
+          "description": "Current available inventory units"
+        },
+        "minStock": {
+          "type": "number",
+          "description": "Minimum threshold warning level"
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Product category"
+        },
+        "barcode": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Scannable barcode string"
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Unit of measurement (e.g. Pcs, Box, Pack)"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        }
+      },
+      "required": ["id", "name", "price", "stock", "ownerId"]
+    },
+    "PosSale": {
+      "title": "POS Sale Order",
+      "description": "Cashier sales order receipt record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique receipt sales number"
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Invoice sequence number"
+        },
+        "time": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Date and time of sale"
+        },
+        "cashierName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Name of cashier handling checkout"
+        },
+        "totalQty": {
+          "type": "number",
+          "description": "Total quantity of items sold"
+        },
+        "totalRevenue": {
+          "type": "number",
+          "description": "Total final checkout bill"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Payment method chosen by customer"
+        },
+        "accountId": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Account receiving payment"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SUCCESS", "VOID"],
+          "description": "Status of the checkout order"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        }
+      },
+      "required": ["id", "invoiceNumber", "time", "cashierName", "totalRevenue", "paymentMethod", "ownerId"]
+    },
+    "CashMutation": {
+      "title": "Cash Flow Mutation",
+      "description": "Operational cash in and cash out ledger record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique mutation record ID"
+        },
+        "time": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Date and time of entry"
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Affected ledger account"
+        },
+        "toAccountId": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Destination ledger account if transfer"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["MASUK", "KELUAR", "TRANSFER_INTERNAL"],
+          "description": "Flow direction"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Amount of cash movement"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Description note"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        }
+      },
+      "required": ["id", "time", "accountId", "type", "amount", "description", "ownerId"]
+    },
+    "CustomerMember": {
+      "title": "Customer Member",
+      "description": "Customer loyalty member profile and reward points balance",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Unique member ID"
+        },
+        "memberNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Customer loyalty card or member code"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Customer full name"
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 30,
+          "description": "Customer contact mobile phone"
+        },
+        "points": {
+          "type": "number",
+          "description": "Accumulated active point balance"
+        },
+        "tier": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Customer loyalty tier"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ACTIVE", "INACTIVE"],
+          "description": "Member status"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the owning user"
+        }
+      },
+      "required": ["id", "memberNumber", "name", "phone", "points", "status", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Authenticated user profile and role authorization mapping"
+    },
+    "/users/{userId}/storeProfile/{profileId}": {
+      "schema": "StoreProfile",
+      "description": "Store operational metadata, contact details, and receipt layout"
+    },
+    "/users/{userId}/accounts/{accountId}": {
+      "schema": "Account",
+      "description": "Financial ledger cash and bank accounts"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Agent Mini ATM financial service transactions"
+    },
+    "/users/{userId}/products/{productId}": {
+      "schema": "Product",
+      "description": "POS cashier store inventory items"
+    },
+    "/users/{userId}/posSales/{saleId}": {
+      "schema": "PosSale",
+      "description": "Completed POS cashier sales records"
+    },
+    "/users/{userId}/mutations/{mutationId}": {
+      "schema": "CashMutation",
+      "description": "Cash in and cash out operational mutations"
+    },
+    "/users/{userId}/members/{memberId}": {
+      "schema": "CustomerMember",
+      "description": "Customer loyalty club members and reward points"
+    }
+  }
+}

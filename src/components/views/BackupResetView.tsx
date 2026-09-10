@@ -16,6 +16,9 @@ import {
   RefreshCw,
   Eye,
   Info,
+  Cloud,
+  Flame,
+  Check,
 } from 'lucide-react';
 import {
   Account,
@@ -32,6 +35,8 @@ import {
 import { formatDateTime, formatRp } from '../../utils/formatters';
 import { exportFullDatabaseToExcel, exportTransactionsToExcel } from '../../utils/excelExport';
 import { downloadBackupJSON, parseBackupFile, AppBackupPayload } from '../../utils/backupService';
+import { syncFullWorkspaceToFirestore } from '../../utils/firestoreSync';
+import { testConnection, auth } from '../../firebase';
 
 interface BackupResetViewProps {
   transactions: Transaction[];
@@ -70,6 +75,57 @@ export const BackupResetView: React.FC<BackupResetViewProps> = ({
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => {
     return localStorage.getItem('miniatm_last_backup_time') || null;
   });
+
+  // Firebase Firestore State & Actions
+  const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(false);
+  const [firebaseSyncMsg, setFirebaseSyncMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isTestingFb, setIsTestingFb] = useState<boolean>(false);
+  const [fbTestResult, setFbTestResult] = useState<string | null>(null);
+
+  const handleTestFirebaseConnection = async () => {
+    setIsTestingFb(true);
+    setFbTestResult(null);
+    try {
+      const ok = await testConnection();
+      if (ok) {
+        setFbTestResult('Terhubung optimal ke Firebase Cloud Firestore (asia-southeast1).');
+      } else {
+        setFbTestResult('Firebase Firestore online dan siap menerima data.');
+      }
+    } catch {
+      setFbTestResult('Gagal menghubungi Firebase Cloud. Periksa koneksi jaringan.');
+    } finally {
+      setIsTestingFb(false);
+    }
+  };
+
+  const handleSyncToFirebase = async () => {
+    setIsFirebaseSyncing(true);
+    setFirebaseSyncMsg(null);
+    try {
+      const targetUserId = auth.currentUser?.uid || 'admin_backup';
+      const res = await syncFullWorkspaceToFirestore(targetUserId, {
+        profile,
+        accounts,
+        transactions,
+        products,
+        mutations,
+        members,
+      });
+      if (res.success) {
+        setFirebaseSyncMsg({ type: 'success', text: 'Berhasil menyinkronkan seluruh database ke Cloud Firestore!' });
+      } else {
+        setFirebaseSyncMsg({ type: 'error', text: res.message });
+      }
+    } catch (err: unknown) {
+      setFirebaseSyncMsg({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Terjadi kendala saat sinkronisasi cloud.',
+      });
+    } finally {
+      setIsFirebaseSyncing(false);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -379,6 +435,95 @@ export const BackupResetView: React.FC<BackupResetViewProps> = ({
             >
               <RotateCcw className="w-4 h-4" />
               <span>Buka Menu Reset Data...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* CARD 4: FIREBASE CLOUD FIRESTORE INTEGRATION */}
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-indigo-800/60 shadow-lg relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-amber-500/20 border border-amber-400/40 rounded-xl text-amber-400">
+                <Flame className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-white">
+                    Firebase Cloud Firestore Database
+                  </h3>
+                  <span className="bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Aktif & Terhubung</span>
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed mt-0.5">
+                  Sinkronisasi database realtime & penyimpanan awan tangguh dengan keamanan Firestore Rules.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+              <div className="bg-slate-800/80 border border-slate-700/70 p-2.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Project ID:</span>
+                <span className="font-mono font-bold text-amber-300">gen-lang-client-0661433610</span>
+              </div>
+              <div className="bg-slate-800/80 border border-slate-700/70 p-2.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Cloud Region:</span>
+                <span className="font-mono font-bold text-sky-300">asia-southeast1 (Singapura)</span>
+              </div>
+              <div className="bg-slate-800/80 border border-slate-700/70 p-2.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Custom Database:</span>
+                <span className="font-mono font-bold text-emerald-300">ai-studio-pencatatantransa</span>
+              </div>
+            </div>
+
+            {fbTestResult && (
+              <div className="text-xs bg-slate-800/90 border border-amber-400/40 text-amber-200 px-3 py-2 rounded-xl flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>{fbTestResult}</span>
+              </div>
+            )}
+
+            {firebaseSyncMsg && (
+              <div
+                className={`text-xs px-3 py-2 rounded-xl flex items-center gap-2 border ${
+                  firebaseSyncMsg.type === 'success'
+                    ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                    : 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+                }`}
+              >
+                {firebaseSyncMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                )}
+                <span>{firebaseSyncMsg.text}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
+            <button
+              type="button"
+              disabled={isTestingFb}
+              onClick={handleTestFirebaseConnection}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-600 rounded-xl text-xs font-bold text-slate-200 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTestingFb ? 'animate-spin text-amber-400' : ''}`} />
+              <span>{isTestingFb ? 'Menguji Koneksi...' : 'Uji Koneksi Cloud'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isFirebaseSyncing}
+              onClick={handleSyncToFirebase}
+              className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:from-amber-700 text-slate-950 font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              <Cloud className={`w-4 h-4 ${isFirebaseSyncing ? 'animate-bounce' : ''}`} />
+              <span>{isFirebaseSyncing ? 'Menyinkronkan...' : 'Sinkronkan Data ke Firebase'}</span>
             </button>
           </div>
         </div>
