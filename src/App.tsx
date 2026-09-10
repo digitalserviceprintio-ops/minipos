@@ -149,7 +149,19 @@ export default function App() {
   const [users, setUsers] = useState<AppUser[]>(() => {
     try {
       const saved = localStorage.getItem('miniatm_users');
-      return saved ? JSON.parse(saved) : INITIAL_USERS;
+      if (saved) {
+        const parsed: AppUser[] = JSON.parse(saved);
+        return parsed.map((u) => {
+          if (u.username === 'admin' && !u.email) {
+            return { ...u, email: 'digitalserviceprint.io@gmail.com', emailVerified: true };
+          }
+          if (u.username === 'kasir' && !u.email) {
+            return { ...u, email: 'kasir@miniatm.id', emailVerified: true };
+          }
+          return u;
+        });
+      }
+      return INITIAL_USERS;
     } catch {
       return INITIAL_USERS;
     }
@@ -190,6 +202,7 @@ export default function App() {
 
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [newUserDefaultRole, setNewUserDefaultRole] = useState<UserRole>('Kasir');
 
   const [isMemberFormOpen, setIsMemberFormOpen] = useState<boolean>(false);
   const [editingMember, setEditingMember] = useState<CustomerMember | null>(null);
@@ -494,25 +507,39 @@ export default function App() {
 
   // Synchronize Firebase auth state with application session
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const displayName = fbUser.displayName || fbUser.email?.split('@')[0] || 'User Cloud';
-        const username = fbUser.email?.split('@')[0] || fbUser.uid.slice(0, 8);
+        const userEmail = (fbUser.email || '').toLowerCase().trim();
+        const isOwner = userEmail === 'digitalserviceprint.io@gmail.com';
+        const registeredAccount = users.find(
+          (u) => u.email && u.email.toLowerCase().trim() === userEmail
+        );
+
+        // Enforce requirement: unregistered Google/Firebase email is NOT allowed
+        if (!registeredAccount && !isOwner) {
+          console.warn(`Akses ditolak: Email Google/Firebase (${userEmail}) belum terdaftar.`);
+          await logoutFirebase();
+          return;
+        }
+
+        const role: UserRole = registeredAccount?.role || 'Admin';
+        const displayName = registeredAccount?.name || fbUser.displayName || userEmail.split('@')[0];
+        const username = registeredAccount?.username || userEmail.split('@')[0];
         const initials =
           displayName
             .split(' ')
             .map((n) => n[0])
             .join('')
             .substring(0, 2)
-            .toUpperCase() || 'FB';
+            .toUpperCase() || (role === 'Admin' ? 'AD' : 'KS');
 
         setCurrentUser((prev) => {
-          if (prev?.id === fbUser.uid) return prev;
+          if (prev?.id === fbUser.uid || prev?.username === username) return prev;
           const userObj: AuthUser = {
             id: fbUser.uid,
             username,
             name: displayName,
-            role: 'Admin',
+            role,
             avatarInitials: initials,
           };
           localStorage.setItem('miniatm_current_user', JSON.stringify(userObj));
@@ -522,7 +549,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [users]);
 
   const handleLoginSuccess = (user: AuthUser) => {
     setCurrentUser(user);
@@ -598,6 +625,7 @@ export default function App() {
         name: (userData.name || '').trim(),
         password: userData.password || '123456',
         role: userData.role || 'Kasir',
+        email: userData.email ? userData.email.trim().toLowerCase() : undefined,
         phone: userData.phone || '',
         status: userData.status || 'ACTIVE',
         createdAt: formatDateTime(),
@@ -1727,9 +1755,19 @@ export default function App() {
       const trimmedUser = (userData.username || '').trim().toLowerCase();
       const trimmedName = (userData.name || '').trim();
       const trimmedPin = (userData.password || '').trim();
+      const trimmedEmail = (userData.email || '').trim().toLowerCase();
 
       if (!trimmedName || !trimmedUser || !trimmedPin) {
         return { success: false, message: 'Nama, username, dan kata sandi wajib diisi.' };
+      }
+
+      if (!trimmedEmail) {
+        return { success: false, message: 'Alamat email aktif wajib diisi untuk validasi pendaftaran.' };
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        return { success: false, message: 'Format email tidak valid. Pastikan format benar (contoh: nama@domain.com).' };
       }
 
       if (trimmedUser.length < 3) {
@@ -1741,15 +1779,22 @@ export default function App() {
         return { success: false, message: `Username "${trimmedUser}" sudah digunakan. Silakan pilih username lain.` };
       }
 
+      const isEmailDuplicate = users.some((u) => u.email && u.email.toLowerCase() === trimmedEmail);
+      if (isEmailDuplicate) {
+        return { success: false, message: `Email "${trimmedEmail}" sudah terdaftar pada akun lain. Silakan gunakan email lain atau masuk.` };
+      }
+
       const newUser: AppUser = {
         id: `usr_${trimmedUser}_${Date.now()}`,
         username: trimmedUser,
         name: trimmedName,
         password: trimmedPin,
-        role: userData.role || 'Kasir',
+        role: 'Admin', // Pendaftaran mandiri dikhususkan untuk Admin (Akun Kasir dibuat di Dashboard)
+        email: trimmedEmail,
+        emailVerified: userData.emailVerified || false,
         status: 'ACTIVE',
         phone: userData.phone ? userData.phone.trim() : '',
-        notes: userData.notes ? userData.notes.trim() : 'Pengguna Baru Terdaftar',
+        notes: userData.notes ? userData.notes.trim() : 'Pendaftaran Mandiri Akun Admin',
         createdAt: formatDateTime(),
         lastLogin: '-',
       };
@@ -2175,8 +2220,9 @@ export default function App() {
               onDeleteUser={handleDeleteUser}
               onToggleUserStatus={handleToggleUserStatus}
               onSwitchActiveUser={handleSwitchActiveUser}
-              onOpenCreateUserModal={(defaultRole) => {
+              onOpenCreateUserModal={(defaultRole = 'Kasir') => {
                 setEditingUser(null);
+                setNewUserDefaultRole(defaultRole);
                 setIsUserModalOpen(true);
               }}
               onOpenEditUserModal={(user) => {
@@ -2349,6 +2395,7 @@ export default function App() {
         onSave={handleSaveUser}
         editingUser={editingUser}
         existingUsers={users}
+        defaultRole={newUserDefaultRole}
       />
 
       <ModalMemberForm

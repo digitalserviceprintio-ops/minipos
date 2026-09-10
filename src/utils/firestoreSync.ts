@@ -223,7 +223,7 @@ export async function syncFullWorkspaceToFirestore(
     return { success: true, message: 'Data berhasil disinkronisasi ke Firebase Cloud Firestore' };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('Workspace sync error:', errorMsg);
+    console.warn('Workspace sync notice:', errorMsg);
     return { success: false, message: errorMsg };
   }
 }

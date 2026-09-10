@@ -150,6 +150,21 @@ export const HakAksesView: React.FC<HakAksesViewProps> = ({
         </div>
       </div>
 
+      {/* Informational Guidance on Centralized Cashier Management */}
+      <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-4 flex items-start gap-3">
+        <div className="p-2 bg-amber-500 text-white rounded-xl shrink-0 mt-0.5">
+          <UserCheck className="w-5 h-5" />
+        </div>
+        <div className="text-xs text-amber-950 leading-relaxed">
+          <p className="font-extrabold text-amber-900 text-sm">
+            Pusat Pengaturan Akun Operator Kasir
+          </p>
+          <p className="mt-0.5 text-amber-800">
+            Sesuai kebijakan hak akses sistem, formulir pendaftaran mandiri di layar depan dibatasi khusus untuk <strong>Admin (Pemilik Usaha)</strong>. Seluruh akun <strong>Operator Kasir</strong> dibuat dan dikonfigurasi langsung oleh Admin di dashboard ini melalui tombol <strong>+ Buat Akun Kasir</strong>. Kredensial dapat langsung dibagikan kepada staf via WhatsApp.
+          </p>
+        </div>
+      </div>
+
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">

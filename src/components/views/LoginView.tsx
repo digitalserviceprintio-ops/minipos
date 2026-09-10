@@ -22,13 +22,23 @@ import {
   ArrowRight,
   Shield,
   HelpCircle,
+  ExternalLink,
+  Mail,
+  Send,
+  ShieldAlert,
+  Info,
 } from 'lucide-react';
 import { AgentProfile, AppUser, UserRole } from '../../types';
 import { useAppVersion } from '../../utils/versionManager';
 import { ModalVersionInfo } from '../modals/ModalVersionInfo';
 import { TransactionVectorIllustration } from '../illustrations/TransactionVectorIllustration';
 import { PWAInstallButton } from '../common/PWAInstallButton';
-import { loginWithGoogle } from '../../firebase';
+import {
+  loginWithGoogle,
+  registerWithFirebaseEmail,
+  resendVerificationEmail,
+  logoutFirebase,
+} from '../../firebase';
 
 export interface AuthUser {
   id?: string;
@@ -71,18 +81,24 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Registration Form States
+  // Registration Form States (Daftar Akun khusus Admin, akun Kasir dibuat di Dashboard Admin)
   const [regName, setRegName] = useState<string>('');
+  const [regEmail, setRegEmail] = useState<string>('');
   const [regUsername, setRegUsername] = useState<string>('');
   const [regPhone, setRegPhone] = useState<string>('');
-  const [regRole, setRegRole] = useState<UserRole>('Kasir');
+  const [regRole, setRegRole] = useState<UserRole>('Admin');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
   const [regNotes, setRegNotes] = useState<string>('');
   const [showRegPassword, setShowRegPassword] = useState<boolean>(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState<boolean>(false);
-  const [autoLoginAfterRegister, setAutoLoginAfterRegister] = useState<boolean>(true);
+  const [autoLoginAfterRegister, setAutoLoginAfterRegister] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
+
+  // Email validation and Unregistered Google state
+  const [emailValidationSentTo, setEmailValidationSentTo] = useState<string | null>(null);
+  const [unregisteredGoogleInfo, setUnregisteredGoogleInfo] = useState<{ email: string; name: string } | null>(null);
+  const [isSendingVerification, setIsSendingVerification] = useState<boolean>(false);
 
   const safeUsers = Array.isArray(users) ? users : [];
 
@@ -95,9 +111,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const trimmedUser = username.trim().toLowerCase();
+    const trimmedInput = username.trim().toLowerCase();
     const matchedAccount = safeUsers.find(
-      (acc) => acc.username.toLowerCase() === trimmedUser && acc.password === password
+      (acc) =>
+        (acc.username.toLowerCase() === trimmedInput ||
+          (acc.email && acc.email.toLowerCase() === trimmedInput)) &&
+        acc.password === password
     );
 
     if (matchedAccount) {
@@ -125,43 +144,84 @@ export const LoginView: React.FC<LoginViewProps> = ({
         });
       }, 350);
     } else {
-      setErrorMessage('Username atau kata sandi salah. Silakan periksa kembali.');
+      setErrorMessage('Username/Email atau kata sandi salah. Silakan periksa kembali.');
     }
   };
 
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
+  const [popupBlocked, setPopupBlocked] = useState<boolean>(false);
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
+    setPopupBlocked(false);
+    setUnregisteredGoogleInfo(null);
     setIsGoogleLoading(true);
     try {
       const user = await loginWithGoogle();
-      const email = user.email || '';
-      const displayName = user.displayName || email.split('@')[0] || 'User Google';
-      const username = email.split('@')[0] || user.uid.slice(0, 8);
-      const role: UserRole = 'Admin';
+      const googleEmail = (user.email || '').toLowerCase().trim();
+
+      // CEK APAKAH EMAIL GOOGLE SUDAH TERDAFTAR DI SISTEM
+      const isOwnerAdmin = googleEmail === 'digitalserviceprint.io@gmail.com';
+      const registeredAccount = safeUsers.find(
+        (u) => u.email && u.email.toLowerCase().trim() === googleEmail
+      );
+
+      if (!registeredAccount && !isOwnerAdmin) {
+        // EMAIL BELUM TERDAFTAR: JANGAN IJINKAN LOGIN!
+        await logoutFirebase();
+        setUnregisteredGoogleInfo({
+          email: googleEmail,
+          name: user.displayName || '',
+        });
+        setErrorMessage(
+          `Akses Ditolak: Email Google "${googleEmail}" belum terdaftar di sistem. Anda wajib mendaftar akun terlebih dahulu.`
+        );
+        return;
+      }
+
+      // AKUN TERDAFTAR: IJINKAN MASUK
+      const displayName = registeredAccount?.name || user.displayName || googleEmail.split('@')[0];
+      const accUsername = registeredAccount?.username || googleEmail.split('@')[0];
+      const role: UserRole = registeredAccount?.role || 'Admin';
       const initials = (displayName
         .split(' ')
         .map((n) => n[0])
         .join('')
         .substring(0, 2)
-        .toUpperCase()) || 'GO';
+        .toUpperCase()) || (role === 'Admin' ? 'AD' : 'KS');
 
-      setSuccessMessage(`Berhasil terhubung ke Firebase! Masuk sebagai ${displayName}`);
+      setSuccessMessage(`Login Google Berhasil! Selamat datang, ${displayName} (${role})`);
       setTimeout(() => {
         executeLogin({
-          id: user.uid,
-          username,
+          id: registeredAccount?.id || user.uid,
+          username: accUsername,
           name: displayName,
           role,
           avatarInitials: initials,
         });
       }, 500);
     } catch (err: unknown) {
-      console.error('Firebase Google sign-in failed:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('popup-closed-by-user')) {
+      const errorStr = String(err);
+      const isBlocked =
+        (err as { code?: string })?.code === 'auth/popup-blocked' ||
+        errorStr.includes('popup-blocked');
+      const isCancelled =
+        (err as { code?: string })?.code === 'auth/popup-closed-by-user' ||
+        errorStr.includes('popup-closed-by-user') ||
+        (err as { code?: string })?.code === 'auth/cancelled-popup-request' ||
+        errorStr.includes('cancelled-popup-request');
+
+      if (isBlocked) {
+        console.warn('Firebase Google sign-in popup was blocked by browser or iframe container.');
+        setPopupBlocked(true);
+        setErrorMessage(
+          'Jendela popup Google Sign-In diblokir oleh browser atau mode pratinjau iframe. Buka di Tab Baru atau gunakan Masuk Cepat.'
+        );
+      } else if (isCancelled) {
+        console.info('Google Sign-in popup closed by user.');
+      } else {
+        console.warn('Firebase Google sign-in encounter:', err);
         setErrorMessage('Gagal masuk via Google / Firebase. Pastikan koneksi internet stabil & popup diizinkan.');
       }
     } finally {
@@ -169,18 +229,35 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
 
     const cleanName = regName.trim();
+    const cleanEmail = regEmail.trim().toLowerCase();
     const cleanUser = regUsername.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
     const cleanPass = regPassword.trim();
     const cleanConfirm = regConfirmPassword.trim();
 
     if (!cleanName) {
       setErrorMessage('Nama lengkap wajib diisi.');
+      return;
+    }
+
+    if (!cleanEmail) {
+      setErrorMessage('Alamat email aktif wajib diisi.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setErrorMessage('Format email tidak valid. Masukkan alamat email yang benar (contoh: nama@gmail.com).');
+      return;
+    }
+
+    if (safeUsers.some((u) => u.email && u.email.toLowerCase() === cleanEmail)) {
+      setErrorMessage(`Email "${cleanEmail}" sudah terdaftar pada akun lain. Silakan gunakan email lain atau masuk.`);
       return;
     }
 
@@ -194,8 +271,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    if (!cleanPass || cleanPass.length < 4) {
-      setErrorMessage('Kata sandi minimal 4 karakter.');
+    if (!cleanPass || cleanPass.length < 6) {
+      setErrorMessage('Kata sandi minimal 6 karakter demi keamanan akun.');
       return;
     }
 
@@ -206,15 +283,29 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     setIsRegistering(true);
 
-    setTimeout(() => {
+    try {
+      // 1. Registrasi di Firebase Auth dan kirim email konfirmasi/validasi
+      let verificationSent = false;
+      try {
+        const fbResult = await registerWithFirebaseEmail(cleanEmail, cleanPass, cleanName);
+        if (fbResult.verificationSent) {
+          verificationSent = true;
+        }
+      } catch (fbErr) {
+        console.warn('Catatan pendaftaran Firebase Auth:', fbErr);
+      }
+
+      // 2. Simpan pengguna ke database aplikasi (Pendaftaran mandiri khusus Admin)
       if (onRegisterUser) {
         const result = onRegisterUser({
           name: cleanName,
+          email: cleanEmail,
+          emailVerified: false,
           username: cleanUser,
           password: cleanPass,
-          role: regRole,
+          role: 'Admin',
           phone: regPhone.trim(),
-          notes: regNotes.trim() || `Pendaftaran akun ${regRole} baru`,
+          notes: regNotes.trim() || 'Pendaftaran akun Admin baru via email',
           status: 'ACTIVE',
         });
 
@@ -226,9 +317,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
 
         const registeredUser = result.user;
+        setEmailValidationSentTo(cleanEmail);
+
+        const successNotice = verificationSent
+          ? `Pendaftaran berhasil! Link konfirmasi/validasi email telah dikirimkan ke ${cleanEmail}.`
+          : `Pendaftaran berhasil! Validasi email dikirimkan ke ${cleanEmail}.`;
+
+        setSuccessMessage(successNotice);
 
         if (autoLoginAfterRegister && registeredUser) {
-          setSuccessMessage('Pendaftaran berhasil! Mengalihkan ke sistem...');
           const initials = cleanName
             .split(' ')
             .map((n) => n[0])
@@ -244,15 +341,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
               role: registeredUser.role,
               avatarInitials: initials || (registeredUser.role === 'Admin' ? 'AD' : 'KS'),
             });
-          }, 600);
+          }, 700);
         } else {
-          setSuccessMessage(`Akun "${cleanName}" (@${cleanUser}) berhasil didaftarkan! Kartu dibalik ke formulir login.`);
           setUsername(cleanUser);
           setPassword(cleanPass);
-          // Flip back to Login card
+          // Flip back to login card
           setIsFlipped(false);
-          // Reset reg fields
           setRegName('');
+          setRegEmail('');
           setRegUsername('');
           setRegPassword('');
           setRegConfirmPassword('');
@@ -263,12 +359,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
         setIsRegistering(false);
         setErrorMessage('Fitur registrasi belum terhubung.');
       }
-    }, 400);
+    } catch (err) {
+      setIsRegistering(false);
+      setErrorMessage(err instanceof Error ? err.message : 'Gagal menyelesaikan pendaftaran.');
+    }
+  };
+
+  const handleResendValidationEmail = async () => {
+    if (!emailValidationSentTo) return;
+    setIsSendingVerification(true);
+    try {
+      const res = await resendVerificationEmail();
+      if (res.success) {
+        setSuccessMessage(`Link validasi email berhasil dikirim ulang ke ${emailValidationSentTo}. Periksa Inbox atau folder Spam.`);
+      } else {
+        setErrorMessage(res.message);
+      }
+    } catch {
+      setErrorMessage('Gagal mengirim ulang email validasi.');
+    } finally {
+      setIsSendingVerification(false);
+    }
   };
 
   const isDuplicateUsername =
     regUsername.trim().length >= 3 &&
     safeUsers.some((u) => u.username.toLowerCase() === regUsername.trim().toLowerCase());
+
+  const isDuplicateEmail =
+    regEmail.trim().length >= 5 &&
+    safeUsers.some((u) => u.email && u.email.toLowerCase() === regEmail.trim().toLowerCase());
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col justify-center items-center p-3 sm:p-6 md:p-8 relative overflow-hidden font-sans selection:bg-blue-600 selection:text-white">
@@ -454,7 +574,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </div>
 
                 {/* Feedback Alerts */}
-                {errorMessage && (
+                {errorMessage && !unregisteredGoogleInfo && (
                   <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
                     <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                     <span className="font-medium">{errorMessage}</span>
@@ -468,11 +588,101 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </div>
                 )}
 
+                {/* Email Validation Status Alert */}
+                {emailValidationSentTo && (
+                  <div className="mb-4 p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-blue-900 text-xs animate-in fade-in duration-200">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-1.5 bg-blue-100 rounded-lg text-blue-700 shrink-0 mt-0.5">
+                        <Mail className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="font-extrabold text-[12px] text-blue-950 flex items-center gap-1.5">
+                          <span>Link Validasi Email Terkirim</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        </p>
+                        <p className="text-[11px] text-blue-800 leading-relaxed">
+                          Link validasi pendaftaran telah dikirimkan ke <strong className="underline">{emailValidationSentTo}</strong>. Buka email Anda dan klik tautan untuk mengonfirmasi akun.
+                        </p>
+                        <div className="pt-1.5 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleResendValidationEmail}
+                            disabled={isSendingVerification}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] rounded-lg transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-60"
+                          >
+                            {isSendingVerification ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3" />
+                            )}
+                            <span>Kirim Ulang Validasi</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEmailValidationSentTo(null)}
+                            className="text-[10px] text-slate-500 hover:text-slate-800 font-medium px-1 cursor-pointer"
+                          >
+                            Tutup
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Unregistered Google Rejection Notice */}
+                {unregisteredGoogleInfo && (
+                  <div className="mb-4 p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-950 text-xs shadow-xs animate-in fade-in duration-200">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-1.5 bg-rose-100 rounded-xl text-rose-700 shrink-0 mt-0.5">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <p className="font-extrabold text-[12px] text-rose-900">
+                          Akses Login Ditolak: Akun Google Belum Terdaftar
+                        </p>
+                        <p className="text-[11px] text-rose-800 leading-relaxed">
+                          Email Google <strong className="underline text-rose-950">{unregisteredGoogleInfo.email}</strong> belum terdaftar di sistem. Kebijakan keamanan melarang login Google sebelum akun resmi terdaftar.
+                        </p>
+                        <div className="pt-1.5 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRegEmail(unregisteredGoogleInfo.email);
+                              setRegName(unregisteredGoogleInfo.name || unregisteredGoogleInfo.email.split('@')[0]);
+                              setRegUsername(
+                                unregisteredGoogleInfo.email
+                                  .split('@')[0]
+                                  .toLowerCase()
+                                  .replace(/[^a-z0-9_.]/g, '')
+                              );
+                              setIsFlipped(true);
+                              setUnregisteredGoogleInfo(null);
+                              setErrorMessage(null);
+                            }}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-[11px] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>Daftar dengan Email Ini Sekarang (Flip ⟳)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUnregisteredGoogleInfo(null)}
+                            className="text-[10px] text-slate-500 hover:text-slate-700 font-medium px-2 py-1 cursor-pointer"
+                          >
+                            Abaikan
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Login Form */}
                 <form onSubmit={handleManualLogin} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Username Pengguna
+                      Username atau Email Terdaftar
                     </label>
                     <div className="relative">
                       <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
@@ -483,7 +693,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         required
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Contoh: admin / kasir_1"
+                        placeholder="Contoh: admin atau nama@domain.com"
                         className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden text-slate-900 font-medium transition-all"
                       />
                     </div>
@@ -586,14 +796,98 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       </>
                     )}
                   </button>
+
+                  {/* Registered Google requirement notice */}
+                  <div className="mt-2 text-center">
+                    <p className="text-[10.5px] text-slate-500 font-medium inline-flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Khusus email yang telah terdaftar. Akun baru wajib mendaftar akun terlebih dahulu.</span>
+                    </p>
+                  </div>
+
+                  {/* Popup Blocked Assistance Card */}
+                  {popupBlocked && (
+                    <div className="mt-2.5 p-3 bg-amber-50/90 border border-amber-300/80 rounded-xl text-amber-950 text-xs animate-in fade-in duration-200">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="space-y-2 flex-1">
+                          <div>
+                            <p className="font-bold text-[11px] text-amber-900">
+                              Popup Google dibatasi oleh browser / mode iframe
+                            </p>
+                            <p className="text-[10px] text-amber-800 mt-0.5 leading-relaxed">
+                              Pilih salah satu solusi instan di bawah ini:
+                            </p>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-1.5 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => window.open(window.location.href, '_blank')}
+                              className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-[10px] rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Buka di Tab Baru</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                executeLogin({
+                                  username: 'admin',
+                                  name: 'Administrator Toko',
+                                  role: 'Admin',
+                                  avatarInitials: 'AD',
+                                });
+                              }}
+                              className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-amber-300 text-amber-900 font-bold text-[10px] rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            >
+                              <ShieldCheck className="w-3 h-3 text-blue-600" />
+                              <span>Masuk Cepat: Admin</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Preset Login Chips */}
+                  <div className="pt-2 flex items-center justify-center gap-2 border-t border-slate-100">
+                    <span className="text-[10px] text-slate-400 font-medium">Akses Cepat:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsername('admin');
+                        setPassword('password123');
+                      }}
+                      className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 text-[10px] font-semibold rounded-md transition-colors cursor-pointer"
+                      title="Isi kredensial Admin"
+                    >
+                      Admin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsername('kasir');
+                        setPassword('password123');
+                      }}
+                      className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 text-[10px] font-semibold rounded-md transition-colors cursor-pointer"
+                      title="Isi kredensial Kasir"
+                    >
+                      Kasir
+                    </button>
+                  </div>
                 </form>
               </div>
 
               {/* Bottom Card Flip Switcher */}
               <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-                <p className="text-xs text-slate-600 text-center sm:text-left">
-                  Belum memiliki akun kasir?
-                </p>
+                <div>
+                  <p className="text-xs font-bold text-slate-700">
+                    Pemilik Usaha / Admin Baru?
+                  </p>
+                  <p className="text-[10.5px] text-slate-500">
+                    Akun Kasir dibuat & diatur langsung oleh Admin di dalam Dashboard
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -601,9 +895,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     setErrorMessage(null);
                     setSuccessMessage(null);
                   }}
-                  className="font-bold text-blue-700 hover:text-blue-800 text-xs inline-flex items-center gap-1.5 hover:underline cursor-pointer bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 transition-colors"
+                  className="font-bold text-blue-700 hover:text-blue-800 text-xs inline-flex items-center gap-1.5 hover:underline cursor-pointer bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 transition-colors shrink-0"
                 >
-                  <span>Daftar Akun Baru</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Daftar Akun Admin</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -629,13 +924,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 {/* Header Back & Flip Button */}
                 <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
                   <div>
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase mb-1">
-                      <UserPlus className="w-3 h-3 text-emerald-600" />
-                      <span>Registrasi Pengguna Baru</span>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold uppercase mb-1">
+                      <ShieldCheck className="w-3 h-3 text-blue-600" />
+                      <span>Registrasi Khusus Admin</span>
                     </div>
                     <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-                      Buat Akun Terminal Baru
+                      Daftar Akun Admin Baru
                     </h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Pendaftaran Pemilik Outlet. Akun kasir dikelola via Dashboard.
+                    </p>
                   </div>
 
                   {/* Flip Back Button */}
@@ -666,6 +964,38 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </div>
                 )}
 
+                {/* Email Validation Notice on Register Card */}
+                {emailValidationSentTo && (
+                  <div className="mb-3.5 p-3 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-950 text-xs animate-in fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-1 bg-emerald-100 rounded-lg text-emerald-700 shrink-0 mt-0.5">
+                        <Mail className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="font-extrabold text-[11.5px] text-emerald-950">
+                          Email Validasi Telah Terkirim!
+                        </p>
+                        <p className="text-[10.5px] text-emerald-800 leading-relaxed">
+                          Link konfirmasi dikirim ke <strong>{emailValidationSentTo}</strong>. Periksa inbox/spam Anda untuk validasi.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResendValidationEmail}
+                          disabled={isSendingVerification}
+                          className="mt-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {isSendingVerification ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                          <span>Kirim Ulang Validasi</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Registration Form */}
                 <form onSubmit={handleRegisterSubmit} className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -684,6 +1014,43 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       />
                     </div>
 
+                    {/* Email Aktif (Wajib untuk validasi) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-blue-600" />
+                          <span>Alamat Email Aktif</span>
+                          <span className="text-rose-500">*</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          Wajib Validasi
+                        </span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        placeholder="nama@gmail.com"
+                        className={`w-full text-xs px-3 py-2 bg-slate-50 border rounded-xl focus:ring-2 focus:bg-white focus:outline-hidden text-slate-900 font-medium ${
+                          isDuplicateEmail
+                            ? 'border-rose-400 focus:ring-rose-500'
+                            : 'border-slate-200 focus:ring-blue-600'
+                        }`}
+                      />
+                      {isDuplicateEmail ? (
+                        <p className="text-[10px] text-rose-600 font-medium mt-0.5">
+                          Email ini sudah terdaftar di sistem.
+                        </p>
+                      ) : (
+                        <p className="text-[9.5px] text-slate-400 font-normal mt-0.5">
+                          Link validasi/konfirmasi akan dikirim ke email ini.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Username */}
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -709,60 +1076,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         </p>
                       )}
                     </div>
-                  </div>
 
-                  {/* Role Selector Cards */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Pilih Peran Akun (Hak Akses)
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setRegRole('Kasir')}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                          regRole === 'Kasir'
-                            ? 'border-amber-500 bg-amber-50/80 ring-1 ring-amber-400'
-                            : 'border-slate-200 bg-slate-50/70 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5 text-amber-600" />
-                            Kasir / Operator
-                          </span>
-                          {regRole === 'Kasir' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />}
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
-                          Akses transaksi, POS & struk.
-                        </p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRegRole('Admin')}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                          regRole === 'Admin'
-                            ? 'border-blue-600 bg-blue-50/80 ring-1 ring-blue-500'
-                            : 'border-slate-200 bg-slate-50/70 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                            Admin / Owner
-                          </span>
-                          {regRole === 'Admin' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
-                          Akses penuh & rekening kas.
-                        </p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Phone & Shift Notes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Phone */}
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         No. HP / WA <span className="text-slate-400 font-normal">(Opsional)</span>
@@ -775,19 +1090,49 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden text-slate-900 font-medium"
                       />
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Shift / Catatan <span className="text-slate-400 font-normal">(Opsional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={regNotes}
-                        onChange={(e) => setRegNotes(e.target.value)}
-                        placeholder="Contoh: Shift Pagi"
-                        className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden text-slate-900 font-medium"
-                      />
+                  {/* Role Display: Strictly Admin (Kasir diatur di Dashboard) */}
+                  <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-[#003366] text-white rounded-lg shrink-0">
+                          <ShieldCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="font-extrabold text-xs text-blue-950 block">
+                            Peran Akun: Admin (Pemilik Outlet)
+                          </span>
+                          <span className="text-[10px] text-blue-800">
+                            Akses penuh terminal, rekening kas, & laporan usaha
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Admin Only
+                      </span>
                     </div>
+
+                    <div className="mt-2.5 pt-2 border-t border-blue-200/60 flex items-start gap-1.5 text-[10.5px] text-blue-900 leading-snug">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
+                      <span>
+                        <strong>Catatan Akun Kasir:</strong> Akun Operator Kasir tidak mendaftar di sini, melainkan dibuatkan dan diatur langsung oleh Admin di dalam <strong>Dashboard Admin</strong> pada menu <em>Hak Akses & Kasir</em>.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Shift Notes */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Shift / Catatan Akses <span className="text-slate-400 font-normal">(Opsional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={regNotes}
+                      onChange={(e) => setRegNotes(e.target.value)}
+                      placeholder="Contoh: Shift Pagi / Kasir Cabang Utama"
+                      className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden text-slate-900 font-medium"
+                    />
                   </div>
 
                   {/* Password & Confirm */}
@@ -802,7 +1147,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                           required
                           value={regPassword}
                           onChange={(e) => setRegPassword(e.target.value)}
-                          placeholder="Min. 4 karakter"
+                          placeholder="Min. 6 karakter"
                           className="w-full text-xs pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden text-slate-900 font-medium"
                         />
                         <button
@@ -855,19 +1200,19 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   {/* Register Submit Button */}
                   <button
                     type="submit"
-                    disabled={isRegistering || isDuplicateUsername}
+                    disabled={isRegistering || isDuplicateUsername || isDuplicateEmail || !regEmail || !regUsername || !regPassword || !regName}
                     id="btn-submit-register"
                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                   >
                     {isRegistering ? (
                       <span className="flex items-center gap-2">
                         <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Mendaftarkan Akun Baru...</span>
+                        <span>Mendaftarkan Akun & Mengirim Email Validasi...</span>
                       </span>
                     ) : (
                       <>
-                        <UserPlus className="w-4 h-4" />
-                        <span>Daftarkan Akun Pengguna</span>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Daftarkan Akun Admin & Kirim Validasi Email</span>
                       </>
                     )}
                   </button>

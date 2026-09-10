@@ -6,6 +6,7 @@ import {
   User,
   Lock,
   Phone,
+  Mail,
   FileText,
   Eye,
   EyeOff,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  Info,
 } from 'lucide-react';
 import { AppUser, UserRole } from '../../types';
 
@@ -23,6 +25,7 @@ interface ModalUserAccountProps {
   onSave: (user: Partial<AppUser>) => void;
   editingUser: AppUser | null;
   existingUsers: AppUser[];
+  defaultRole?: UserRole;
 }
 
 export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
@@ -31,11 +34,13 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
   onSave,
   editingUser,
   existingUsers,
+  defaultRole = 'Kasir',
 }) => {
   const [name, setName] = useState<string>('');
   const [username, setUsername] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [role, setRole] = useState<UserRole>('Kasir');
+  const [role, setRole] = useState<UserRole>(defaultRole);
   const [phone, setPhone] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
@@ -47,6 +52,7 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
     if (editingUser) {
       setName(editingUser.name);
       setUsername(editingUser.username);
+      setEmail(editingUser.email || '');
       setPassword(editingUser.password);
       setRole(editingUser.role);
       setPhone(editingUser.phone || '');
@@ -55,15 +61,16 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
     } else {
       setName('');
       setUsername('');
-      setPassword('kasir' + Math.floor(100 + Math.random() * 900));
-      setRole('Kasir');
+      setEmail('');
+      setPassword((defaultRole === 'Kasir' ? 'kasir' : 'admin') + Math.floor(100 + Math.random() * 900));
+      setRole(defaultRole);
       setPhone('');
-      setNotes('Operator Kasir');
+      setNotes(defaultRole === 'Kasir' ? 'Operator Kasir' : 'Administrator Usaha');
       setStatus('ACTIVE');
     }
     setErrorMessage(null);
     setCopiedWA(false);
-  }, [editingUser, isOpen]);
+  }, [editingUser, isOpen, defaultRole]);
 
   if (!isOpen) return null;
 
@@ -105,6 +112,25 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        setErrorMessage('Format email tidak valid (contoh: nama@email.com).');
+        return;
+      }
+      const isDuplicateEmail = existingUsers.some(
+        (u) =>
+          u.email &&
+          u.email.toLowerCase() === cleanEmail &&
+          (!editingUser || u.id !== editingUser.id)
+      );
+      if (isDuplicateEmail) {
+        setErrorMessage(`Email "${cleanEmail}" sudah digunakan oleh pengguna lain.`);
+        return;
+      }
+    }
+
     if (!password || password.length < 4) {
       setErrorMessage('Kata sandi minimal harus 4 karakter.');
       return;
@@ -114,6 +140,7 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
       id: editingUser ? editingUser.id : undefined,
       name: cleanName,
       username: cleanUsername,
+      email: cleanEmail || undefined,
       password: (password || '').trim(),
       role,
       phone: (phone || '').trim(),
@@ -233,6 +260,16 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
                 </div>
               </button>
             </div>
+
+            {/* Explanatory banner for Kasir role */}
+            {role === 'Kasir' && (
+              <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2 leading-relaxed">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Pengaturan Akun Kasir:</strong> Akun kasir dikelola dan dibuat langsung oleh Admin di dashboard ini. Petugas kasir dapat langsung login ke aplikasi menggunakan username & sandi yang Anda tentukan di bawah tanpa perlu mendaftar mandiri.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Full Name & Username */}
@@ -325,11 +362,29 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
             </div>
           </div>
 
-          {/* Phone & Status */}
+          {/* Email & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                No. WhatsApp / HP
+                Alamat Email Petugas <span className="text-slate-400 font-normal">(Opsional)</span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="petugas@email.com"
+                  className="w-full text-xs pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                No. WhatsApp / HP <span className="text-slate-400 font-normal">(Opsional)</span>
               </label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -344,7 +399,10 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
                 />
               </div>
             </div>
+          </div>
 
+          {/* Status & Shift */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Status Akun
@@ -358,24 +416,23 @@ export const ModalUserAccount: React.FC<ModalUserAccountProps> = ({
                 <option value="INACTIVE">🔴 Non-Aktif (Diblokir/Cuti)</option>
               </select>
             </div>
-          </div>
 
-          {/* Notes / Shift */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Catatan Penempatan / Shift Kerja
-            </label>
-            <div className="relative">
-              <div className="absolute left-3 top-2.5 text-slate-400">
-                <FileText className="w-4 h-4" />
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Catatan Penempatan / Shift
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Contoh: Shift Pagi / Kasir Utama"
+                  className="w-full text-xs pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden"
+                />
               </div>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Contoh: Shift Pagi (08:00 - 15:00) / Kasir Utama"
-                className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-hidden"
-              />
             </div>
           </div>
 

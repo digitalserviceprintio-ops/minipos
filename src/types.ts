@@ -288,6 +288,8 @@ export interface AppUser {
   name: string;
   password: string;
   role: UserRole;
+  email?: string;
+  emailVerified?: boolean;
   phone?: string;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
