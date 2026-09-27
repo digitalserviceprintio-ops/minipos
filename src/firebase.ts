@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth';
 import {
@@ -246,6 +247,43 @@ export async function resendVerificationEmail(
     return {
       success: false,
       message: 'Gagal mengirim ulang email validasi. Coba beberapa saat lagi.',
+    };
+  }
+}
+
+/**
+ * Send password reset email link using Firebase Authentication
+ */
+export async function sendFirebasePasswordReset(
+  email: string
+): Promise<{ success: boolean; message: string }> {
+  const trimmed = email.trim();
+  if (!trimmed) {
+    return { success: false, message: 'Alamat email wajib diisi.' };
+  }
+  try {
+    await sendPasswordResetEmail(auth, trimmed);
+    return {
+      success: true,
+      message: `Link reset password berhasil dikirim ke ${trimmed}. Silakan periksa kotak masuk atau spam email Anda.`,
+    };
+  } catch (err: unknown) {
+    const errorStr = String(err);
+    if (errorStr.includes('auth/user-not-found')) {
+      return {
+        success: false,
+        message: `Akun dengan email "${trimmed}" tidak terdaftar di sistem Firebase.`,
+      };
+    }
+    if (errorStr.includes('auth/invalid-email')) {
+      return {
+        success: false,
+        message: 'Format alamat email tidak valid.',
+      };
+    }
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Gagal mengirim email reset password.',
     };
   }
 }

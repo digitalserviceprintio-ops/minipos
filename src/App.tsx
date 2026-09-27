@@ -1829,6 +1829,32 @@ export default function App() {
     }
   };
 
+  const handleResetUserPassword = (usernameOrEmail: string, newPassword?: string): { success: boolean; message: string } => {
+    try {
+      const trimmed = usernameOrEmail.trim().toLowerCase();
+      const userIndex = users.findIndex(
+        (u) => u.username.toLowerCase() === trimmed || (u.email && u.email.toLowerCase() === trimmed)
+      );
+      if (userIndex === -1) {
+        return { success: false, message: `Akun dengan "${usernameOrEmail}" tidak ditemukan di sistem.` };
+      }
+      if (newPassword) {
+        if (newPassword.length < 6) {
+          return { success: false, message: 'Kata sandi baru minimal 6 karakter.' };
+        }
+        const updatedUsers = [...users];
+        updatedUsers[userIndex] = { ...updatedUsers[userIndex], password: newPassword };
+        setUsers(updatedUsers);
+        syncUserToSheets(updatedUsers[userIndex]);
+        recordVersionChange(`Reset kata sandi pengguna "${updatedUsers[userIndex].name}" (@${updatedUsers[userIndex].username})`, 'USER');
+        return { success: true, message: `Kata sandi akun @${updatedUsers[userIndex].username} berhasil diperbarui.` };
+      }
+      return { success: true, message: 'Akun terverifikasi.' };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Gagal mereset kata sandi.' };
+    }
+  };
+
   // Cash Mutation Handler
   const handleSaveMutation = (mut: CashMutation) => {
     setMutations((prev) => [mut, ...prev]);
@@ -1882,6 +1908,7 @@ export default function App() {
         users={users}
         onLoginSuccess={handleLoginSuccess}
         onRegisterUser={handleRegisterUser}
+        onResetPassword={handleResetUserPassword}
       />
     );
   }

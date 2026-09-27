@@ -22,6 +22,9 @@ import {
   CreditCard,
   Building2,
   Check,
+  KeyRound,
+  ArrowLeft,
+  HelpCircle,
 } from 'lucide-react';
 import { AgentProfile, AppUser, UserRole } from '../../types';
 import { useAppVersion } from '../../utils/versionManager';
@@ -32,6 +35,7 @@ import {
   loginWithGoogle,
   registerWithFirebaseEmail,
   resendVerificationEmail,
+  sendFirebasePasswordReset,
   logoutFirebase,
 } from '../../firebase';
 
@@ -54,6 +58,7 @@ interface LoginViewProps {
   users?: AppUser[];
   onLoginSuccess: (user: AuthUser) => void;
   onRegisterUser?: (userData: Partial<AppUser>) => RegisterResult;
+  onResetPassword?: (usernameOrEmail: string, newPassword?: string) => { success: boolean; message: string };
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
@@ -61,11 +66,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
   users = [],
   onLoginSuccess,
   onRegisterUser,
+  onResetPassword,
 }) => {
   const { enterpriseVersion, version } = useAppVersion();
 
-  // Active Tab: 'login' | 'register'
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
+  // Active Tab: 'login' | 'register' | 'forgot'
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'forgot'>('login');
   const [isVersionModalOpen, setIsVersionModalOpen] = useState<boolean>(false);
 
   // Login Form States
@@ -76,6 +82,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Forgot Password States
+  const [forgotMethod, setForgotMethod] = useState<'email' | 'account'>('email');
+  const [forgotEmail, setForgotEmail] = useState<string>('');
+  const [forgotUsername, setForgotUsername] = useState<string>('');
+  const [forgotPhone, setForgotPhone] = useState<string>('');
+  const [forgotNewPassword, setForgotNewPassword] = useState<string>('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState<string>('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState<boolean>(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
 
   // Registration Form States (Daftar Akun khusus Admin, akun Kasir dibuat di Dashboard Admin)
   const [regName, setRegName] = useState<string>('');
@@ -375,6 +393,116 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
+  const handleForgotEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setResetSuccessMessage(null);
+
+    const emailToReset = forgotEmail.trim();
+    if (!emailToReset) {
+      setErrorMessage('Silakan masukkan alamat email akun Anda.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailToReset)) {
+      setErrorMessage('Format alamat email tidak valid (contoh: nama@domain.com).');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const res = await sendFirebasePasswordReset(emailToReset);
+      if (res.success) {
+        setResetSuccessMessage(res.message);
+        setSuccessMessage(res.message);
+      } else {
+        setErrorMessage(res.message);
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Gagal mengirim email reset password.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleForgotAccountSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setResetSuccessMessage(null);
+
+    const idInput = forgotUsername.trim().toLowerCase();
+    const phoneInput = forgotPhone.trim();
+
+    if (!idInput) {
+      setErrorMessage('Username atau email akun wajib diisi.');
+      return;
+    }
+
+    if (!forgotNewPassword) {
+      setErrorMessage('Kata sandi baru wajib diisi.');
+      return;
+    }
+
+    if (forgotNewPassword.length < 6) {
+      setErrorMessage('Kata sandi baru minimal 6 karakter demi keamanan.');
+      return;
+    }
+
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setErrorMessage('Konfirmasi kata sandi baru tidak cocok.');
+      return;
+    }
+
+    // Check account in safeUsers
+    const targetUser = safeUsers.find(
+      (u) =>
+        u.username.toLowerCase() === idInput ||
+        (u.email && u.email.toLowerCase() === idInput)
+    );
+
+    if (!targetUser) {
+      setErrorMessage(`Akun dengan username atau email "${forgotUsername}" tidak ditemukan di database.`);
+      return;
+    }
+
+    // If account has registered phone, verify it
+    if (targetUser.phone && phoneInput) {
+      const cleanTargetPhone = targetUser.phone.replace(/[^0-9]/g, '');
+      const cleanInputPhone = phoneInput.replace(/[^0-9]/g, '');
+      if (cleanTargetPhone && cleanInputPhone && cleanTargetPhone !== cleanInputPhone) {
+        setErrorMessage('Nomor HP tidak cocok dengan data terdaftar akun ini.');
+        return;
+      }
+    }
+
+    setIsResetting(true);
+    setTimeout(() => {
+      setIsResetting(false);
+      if (onResetPassword) {
+        const res = onResetPassword(targetUser.username, forgotNewPassword);
+        if (res.success) {
+          const successTxt = `Kata sandi untuk @${targetUser.username} (${targetUser.name}) berhasil diperbarui! Silakan masuk kembali dengan kata sandi baru.`;
+          setResetSuccessMessage(successTxt);
+          setSuccessMessage(successTxt);
+          setUsername(targetUser.username);
+          setPassword(forgotNewPassword);
+        } else {
+          setErrorMessage(res.message);
+        }
+      } else {
+        targetUser.password = forgotNewPassword;
+        const successTxt = `Kata sandi untuk @${targetUser.username} berhasil direset!`;
+        setResetSuccessMessage(successTxt);
+        setSuccessMessage(successTxt);
+        setUsername(targetUser.username);
+        setPassword(forgotNewPassword);
+      }
+    }, 450);
+  };
+
   const isDuplicateUsername =
     regUsername.trim().length >= 3 &&
     safeUsers.some((u) => u.username.toLowerCase() === regUsername.trim().toLowerCase());
@@ -485,17 +613,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
         <div className="lg:col-span-7 bg-white p-6 sm:p-8 lg:p-10 flex flex-col justify-between">
           <div>
             {/* Functional Segmented Navigation Tabs */}
-            <div className="flex border-b border-slate-200 mb-6">
+            <div className="flex border-b border-slate-200 mb-6 gap-5 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab('login');
                   setErrorMessage(null);
                   setSuccessMessage(null);
+                  setResetSuccessMessage(null);
                 }}
-                className={`pb-3 text-sm font-semibold transition-colors relative cursor-pointer mr-6 ${
+                className={`pb-3 text-sm font-semibold transition-colors relative cursor-pointer whitespace-nowrap ${
                   activeTab === 'login'
-                    ? 'text-slate-900 border-b-2 border-blue-600'
+                    ? 'text-orange-600 border-b-2 border-orange-500 font-bold'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -507,14 +636,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   setActiveTab('register');
                   setErrorMessage(null);
                   setSuccessMessage(null);
+                  setResetSuccessMessage(null);
                 }}
-                className={`pb-3 text-sm font-semibold transition-colors relative cursor-pointer ${
+                className={`pb-3 text-sm font-semibold transition-colors relative cursor-pointer whitespace-nowrap ${
                   activeTab === 'register'
-                    ? 'text-slate-900 border-b-2 border-blue-600'
+                    ? 'text-orange-600 border-b-2 border-orange-500 font-bold'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 Daftar Admin Baru
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('forgot');
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  setResetSuccessMessage(null);
+                  if (username && username.includes('@') && !forgotEmail) {
+                    setForgotEmail(username);
+                  } else if (username && !forgotUsername) {
+                    setForgotUsername(username);
+                  }
+                }}
+                className={`pb-3 text-sm font-semibold transition-colors relative cursor-pointer whitespace-nowrap ${
+                  activeTab === 'forgot'
+                    ? 'text-orange-600 border-b-2 border-orange-500 font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Lupa Password
               </button>
             </div>
 
@@ -658,6 +809,23 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       <label className="block text-xs font-semibold text-slate-700">
                         Kata Sandi
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('forgot');
+                          setErrorMessage(null);
+                          setSuccessMessage(null);
+                          setResetSuccessMessage(null);
+                          if (username && username.includes('@') && !forgotEmail) {
+                            setForgotEmail(username);
+                          } else if (username && !forgotUsername) {
+                            setForgotUsername(username);
+                          }
+                        }}
+                        className="text-xs text-orange-600 hover:text-orange-700 font-semibold cursor-pointer hover:underline"
+                      >
+                        Lupa Password?
+                      </button>
                     </div>
                     <div className="relative">
                       <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
@@ -755,10 +923,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   )}
                 </button>
 
-                <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-                  Khusus akun email yang sudah terdaftar. Pengguna baru dapat mendaftar melalui menu pendaftaran Admin.
-                </p>
-
                 {/* Popup Blocked Fallback */}
                 {popupBlocked && (
                   <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs">
@@ -794,32 +958,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     </div>
                   </div>
                 )}
-
-                {/* Clean Unboxed Preset Shortcuts for Testing */}
-                <div className="pt-2 flex items-center justify-center gap-2 text-xs text-slate-500">
-                  <span>Isi otomatis:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUsername('admin');
-                      setPassword('password123');
-                    }}
-                    className="text-blue-700 hover:text-blue-900 font-medium hover:underline cursor-pointer"
-                  >
-                    Admin
-                  </button>
-                  <span aria-hidden="true" className="text-slate-300">·</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUsername('kasir');
-                      setPassword('password123');
-                    }}
-                    className="text-blue-700 hover:text-blue-900 font-medium hover:underline cursor-pointer"
-                  >
-                    Kasir
-                  </button>
-                </div>
               </div>
             )}
 
@@ -1009,7 +1147,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       !regName
                     }
                     id="btn-submit-register"
-                    className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                   >
                     {isRegistering ? (
                       <span className="flex items-center gap-2">
@@ -1026,6 +1164,256 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </form>
               </div>
             )}
+
+            {/* ===================================================================== */}
+            {/* VIEW 3: FORGOT PASSWORD (LUPA PASSWORD) */}
+            {/* ===================================================================== */}
+            {activeTab === 'forgot' && (
+              <div className="space-y-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="p-1.5 rounded-lg bg-orange-100/80 text-orange-600">
+                      <KeyRound className="w-4 h-4" />
+                    </span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-orange-600">
+                      Pemulihan Akses Akun
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                    Lupa Kata Sandi Akun
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Pilih opsi pemulihan: kirim tautan reset resmi ke alamat email Anda (Firebase) atau reset langsung dengan verifikasi akun Kasir / Admin.
+                  </p>
+                </div>
+
+                {/* Sub-Tabs: Pilih Metode Pemulihan */}
+                <div className="grid grid-cols-2 p-1 bg-slate-100/90 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMethod('email');
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                      setResetSuccessMessage(null);
+                    }}
+                    className={`py-2 px-3 rounded-lg text-center transition-all cursor-pointer ${
+                      forgotMethod === 'email'
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Kirim Link ke Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMethod('account');
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                      setResetSuccessMessage(null);
+                    }}
+                    className={`py-2 px-3 rounded-lg text-center transition-all cursor-pointer ${
+                      forgotMethod === 'account'
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Reset Akun Kasir / Admin
+                  </button>
+                </div>
+
+                {/* Mode A: Kirim Link Reset Email Firebase */}
+                {forgotMethod === 'email' ? (
+                  <form onSubmit={handleForgotEmailSubmit} className="space-y-4">
+                    <div className="p-3 bg-orange-50/80 border border-orange-200/80 rounded-xl text-xs text-slate-700 space-y-1">
+                      <div className="font-semibold text-orange-950 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Kirim Link Reset Melalui Email Firebase</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Masukkan email yang terdaftar pada akun Anda. Kami akan mengirimkan tautan resmi pemulihan kata sandi yang aman.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Alamat Email Terdaftar <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="email"
+                          required
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          placeholder="nama@gmail.com"
+                          className="w-full text-xs pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white focus:outline-hidden text-slate-900 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isResetting || !forgotEmail}
+                      className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs shadow-orange-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {isResetting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Mengirim Tautan Reset Password...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Kirim Tautan Reset ke Email</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  /* Mode B: Reset Kata Sandi Akun Kasir / Admin */
+                  <form onSubmit={handleForgotAccountSubmit} className="space-y-3.5">
+                    <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs text-slate-700 space-y-1">
+                      <div className="font-semibold text-blue-950 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Reset Langsung Kata Sandi Akun</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Masukkan username atau email akun dan verifikasi nomor HP yang terdaftar untuk membuat kata sandi baru.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Username atau Email Akun <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={forgotUsername}
+                          onChange={(e) => setForgotUsername(e.target.value)}
+                          placeholder="Masukkan username atau email"
+                          className="w-full text-xs pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white focus:outline-hidden text-slate-900 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nomor HP / WhatsApp Terdaftar (Verifikasi Keamanan)
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                          <Phone className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="tel"
+                          value={forgotPhone}
+                          onChange={(e) => setForgotPhone(e.target.value)}
+                          placeholder="08xxxxxxxxxx"
+                          className="w-full text-xs pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white focus:outline-hidden text-slate-900 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Kata Sandi Baru <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type={showForgotNewPassword ? 'text' : 'password'}
+                            required
+                            value={forgotNewPassword}
+                            onChange={(e) => setForgotNewPassword(e.target.value)}
+                            placeholder="Min. 6 karakter"
+                            className="w-full text-xs pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white focus:outline-hidden text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            {showForgotNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Ulangi Kata Sandi Baru <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type={showForgotConfirmPassword ? 'text' : 'password'}
+                            required
+                            value={forgotConfirmPassword}
+                            onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                            placeholder="Ulangi kata sandi baru"
+                            className="w-full text-xs pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:bg-white focus:outline-hidden text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            {showForgotConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isResetting || !forgotUsername || !forgotNewPassword || !forgotConfirmPassword}
+                      className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs shadow-orange-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {isResetting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menyimpan Kata Sandi Baru...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Simpan Kata Sandi Baru</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('login');
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                      setResetSuccessMessage(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-orange-600 font-semibold transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Kembali ke Halaman Masuk</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Bottom Switcher Helper */}
@@ -1039,13 +1427,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     setActiveTab('register');
                     setErrorMessage(null);
                     setSuccessMessage(null);
+                    setResetSuccessMessage(null);
                   }}
-                  className="text-blue-700 hover:text-blue-900 font-semibold hover:underline cursor-pointer"
+                  className="text-orange-600 hover:text-orange-700 font-semibold hover:underline cursor-pointer"
                 >
                   Daftar sebagai Admin
                 </button>
               </>
-            ) : (
+            ) : activeTab === 'register' ? (
               <>
                 <span>Sudah memiliki akun terdaftar?</span>
                 <button
@@ -1054,8 +1443,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     setActiveTab('login');
                     setErrorMessage(null);
                     setSuccessMessage(null);
+                    setResetSuccessMessage(null);
                   }}
-                  className="text-blue-700 hover:text-blue-900 font-semibold hover:underline cursor-pointer"
+                  className="text-orange-600 hover:text-orange-700 font-semibold hover:underline cursor-pointer"
+                >
+                  Masuk ke Terminal
+                </button>
+              </>
+            ) : (
+              <>
+                <span>Sudah mengingat kata sandi Anda?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('login');
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                    setResetSuccessMessage(null);
+                  }}
+                  className="text-orange-600 hover:text-orange-700 font-semibold hover:underline cursor-pointer"
                 >
                   Masuk ke Terminal
                 </button>
