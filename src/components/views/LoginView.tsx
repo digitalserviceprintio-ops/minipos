@@ -27,6 +27,7 @@ import { AgentProfile, AppUser, UserRole } from '../../types';
 import { useAppVersion } from '../../utils/versionManager';
 import { ModalVersionInfo } from '../modals/ModalVersionInfo';
 import { PWAInstallButton } from '../common/PWAInstallButton';
+import { MiniPosPersonIllustration } from '../illustrations/MiniPosPersonIllustration';
 import {
   loginWithGoogle,
   registerWithFirebaseEmail,
@@ -387,88 +388,75 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Main Structural Frame */}
       <div className="w-full max-w-5xl bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: Bank / Agency Hardware Terminal Identity (Clean Dark Navy) */}
+        {/* LEFT COLUMN: Clean Animated Presentation - MiniPos Kasir & Agen Mini ATM */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-5 bg-[#0f172a] text-slate-100 p-6 sm:p-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800 relative">
-          <div className="space-y-6">
+        <div className="lg:col-span-5 bg-gradient-to-br from-orange-50/90 via-amber-50/40 to-white text-slate-800 p-6 sm:p-7 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-orange-100/90 relative overflow-hidden">
+          {/* Subtle Decorative Ambient Background Blobs */}
+          <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full bg-orange-200/30 blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-16 -right-16 w-56 h-56 rounded-full bg-amber-200/30 blur-2xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-4">
             {/* Header Brand */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-xl bg-white p-1 shrink-0 shadow-sm border border-slate-700/60 flex items-center justify-center overflow-hidden">
-                <img
-                  src={profile.logoUrl || '/logo.png'}
-                  alt={profile.storeName || 'Logo Mini ATM'}
-                  className="w-full h-full object-contain"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-sky-400 tracking-wider uppercase">
-                  Sistem Kasir & Mini ATM
+            <div className="flex items-center justify-between pb-3 border-b border-orange-200/60">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-white p-1 shrink-0 shadow-xs border border-orange-200 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={profile.logoUrl || '/logo.png'}
+                    alt={profile.storeName || 'Logo Mini ATM'}
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
-                <h1 className="font-bold text-lg text-white tracking-tight leading-snug truncate">
-                  {profile.storeName || 'MINI ATM & BRILINK'}
-                </h1>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold text-orange-600 tracking-wider uppercase">
+                    Aplikasi Kasir Agen
+                  </div>
+                  <h1 className="font-bold text-sm sm:text-base text-slate-900 tracking-tight leading-tight truncate">
+                    {profile.storeName || 'MINI ATM POS'}
+                  </h1>
+                </div>
               </div>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-orange-100/80 text-orange-800 border border-orange-200/70 shrink-0">
+                {profile.idAgent || 'AG-88921'}
+              </span>
             </div>
 
-            {/* Outlet Metadata Summary */}
-            <div className="space-y-2 py-3 border-y border-slate-800 text-xs">
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="text-slate-400">Terminal ID</span>
-                <span className="font-mono font-medium text-slate-100">
-                  {profile.idAgent || 'AG-88921'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="text-slate-400">Pemilik Outlet</span>
-                <span className="font-medium text-slate-100 truncate max-w-[180px]">
-                  {profile.ownerName || 'Bpk. Rahmat Santoso'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="text-slate-400">Status Sistem</span>
-                <span className="font-medium text-emerald-400 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>Siap Operasi</span>
-                </span>
-              </div>
+            {/* Animated Character Illustration: Person introducing MiniPos */}
+            <div className="py-1">
+              <MiniPosPersonIllustration className="w-full max-w-[340px] mx-auto" />
             </div>
 
-            {/* Architectural Terminal Architecture Specs */}
-            <div className="space-y-3">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Spesifikasi Terminal
+            {/* Value Proposition & Application Description */}
+            <div className="text-center space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100/70 text-orange-800 text-[11px] font-bold border border-orange-200/80 shadow-2xs">
+                <span>✨ Aplikasi Kasir Modern</span>
+                <span className="font-extrabold text-orange-600">"MiniPos"</span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-                  <Database className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-slate-200">Isolasi Data Mandiri</div>
-                    <div className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                      Penyimpanan terisolasi per-akun dengan sinkronisasi Google Sheets & Cloud Firestore.
-                    </div>
-                  </div>
-                </div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug">
+                Pencatatan Transaksi Agen Mini ATM &amp; POS
+              </h2>
+              <p className="text-[11px] text-slate-600 leading-relaxed max-w-xs mx-auto">
+                Solusi praktis dan otomatis untuk transfer, tarik tunai, pembayaran tagihan, serta penjualan ritel toko dengan cetak struk instan.
+              </p>
+            </div>
 
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-                  <Receipt className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-slate-200">Cetak Struk Thermal</div>
-                    <div className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                      Mendukung koneksi printer Bluetooth ESC/POS standar 58mm dan 80mm.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-                  <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-slate-200">Hak Akses Terpisah</div>
-                    <div className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                      Pemisahan peran Admin (akses penuh & mutasi kas) dan Kasir (khusus transaksi).
-                    </div>
-                  </div>
-                </div>
+            {/* Clean Feature Highlights Cards */}
+            <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+              <div className="p-2 rounded-xl bg-white/85 border border-orange-200/70 shadow-2xs backdrop-blur-xs flex items-center gap-2 text-slate-700">
+                <CheckCircle2 className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Mini ATM &amp; Ritel POS</span>
+              </div>
+              <div className="p-2 rounded-xl bg-white/85 border border-orange-200/70 shadow-2xs backdrop-blur-xs flex items-center gap-2 text-slate-700">
+                <Receipt className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Struk Thermal 58/80mm</span>
+              </div>
+              <div className="p-2 rounded-xl bg-white/85 border border-orange-200/70 shadow-2xs backdrop-blur-xs flex items-center gap-2 text-slate-700">
+                <Database className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Cloud &amp; Google Sheets</span>
+              </div>
+              <div className="p-2 rounded-xl bg-white/85 border border-orange-200/70 shadow-2xs backdrop-blur-xs flex items-center gap-2 text-slate-700">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Laporan Laba Real-Time</span>
               </div>
             </div>
 
@@ -479,12 +467,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
 
           {/* Bottom Footer Info */}
-          <div className="pt-6 mt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span>Mini ATM POS Terminal</span>
+          <div className="relative z-10 pt-4 mt-4 border-t border-orange-200/60 flex items-center justify-between text-xs text-slate-500">
+            <span className="text-[11px] font-medium">Terminal Kasir MiniPos</span>
             <button
               type="button"
               onClick={() => setIsVersionModalOpen(true)}
-              className="text-slate-400 hover:text-white transition-colors cursor-pointer text-[11px] font-mono hover:underline"
+              className="text-orange-600 hover:text-orange-700 transition-colors cursor-pointer text-[11px] font-mono font-semibold hover:underline"
             >
               {enterpriseVersion}
             </button>
