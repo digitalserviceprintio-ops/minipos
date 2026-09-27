@@ -174,7 +174,12 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('transaksi');
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
 
   // Modals state
   const [isTrxModalOpen, setIsTrxModalOpen] = useState<boolean>(false);
@@ -1882,7 +1887,7 @@ export default function App() {
   }
 
   return (
-    <div className="text-slate-800 antialiased bg-slate-100 min-h-screen flex font-sans">
+    <div className="text-slate-800 antialiased bg-slate-100/70 min-h-screen flex font-sans">
       {/* Sidebar: Left Column (Desktop) / Sliding Drawer (Mobile) */}
       <Sidebar
         activeTab={activeTab}

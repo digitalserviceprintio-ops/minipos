@@ -30,9 +30,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   if (isStandalone || isInstalled) {
     if (variant === 'sidebar') {
       return (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/40 rounded-xl text-[11px] text-blue-200 border border-blue-800/60">
-          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span>Aplikasi Terinstall (PWA)</span>
+        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-emerald-50/90 rounded-xl text-xs text-emerald-800 border border-emerald-200/80 backdrop-blur-xs shadow-2xs">
+          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span className="font-medium">Aplikasi Terpasang (PWA)</span>
         </div>
       );
     }
@@ -45,20 +45,15 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         <button
           type="button"
           onClick={handleClick}
-          className={`w-full flex items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer group ${className}`}
-          title="Install Aplikasi di Desktop, Tablet, atau HP"
+          className={`w-full flex items-center justify-between px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs shadow-orange-500/20 transition-all cursor-pointer ${className}`}
+          title="Install Aplikasi di Komputer atau HP"
         >
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-white">
-              <Download className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-left">
-              <div className="font-bold leading-tight">Install Aplikasi</div>
-              <div className="text-[10px] text-blue-100 font-normal leading-tight">Desktop, Tablet & HP</div>
-            </div>
+            <Download className="w-3.5 h-3.5 text-white shrink-0" />
+            <span>Install Aplikasi (PWA)</span>
           </div>
-          <span className="text-[10px] bg-white/20 text-white font-bold px-1.5 py-0.5 rounded-full">
-            App
+          <span className="text-[10px] bg-white/25 px-1.5 py-0.5 rounded-md text-white font-mono font-bold">
+            Install
           </span>
         </button>
 

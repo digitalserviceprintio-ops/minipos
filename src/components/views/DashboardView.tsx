@@ -10,7 +10,6 @@ import {
   ShoppingCart,
   Layers,
   ArrowDownRight,
-  Sparkles,
   ShoppingBag,
   ExternalLink,
   Store,
@@ -20,7 +19,6 @@ import {
 import { Line, Doughnut } from 'react-chartjs-2';
 import { Account, ActiveTab, PosSale, Product, Transaction } from '../../types';
 import { formatRp } from '../../utils/formatters';
-import { RetailSalesIllustration } from '../illustrations/RetailSalesIllustration';
 
 interface DashboardViewProps {
   transactions?: Transaction[];
@@ -161,24 +159,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <section id="view-dashboard" className="space-y-6">
-      {/* 1. HERO BANNER: Clean White Theme with Crisp Typography & Fresh Mint Accents */}
+      {/* 1. HERO BANNER: Clean Architectural Banking Summary */}
       <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-xs border border-slate-200/90 p-6 md:p-8">
-        {/* Subtle mint/teal decorative glows */}
-        <div className="absolute -right-12 -top-12 w-64 h-64 rounded-full bg-emerald-100/40 blur-3xl pointer-events-none" />
-        <div className="absolute left-1/3 -bottom-16 w-80 h-80 rounded-full bg-teal-100/40 blur-3xl pointer-events-none" />
-
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           {/* Left Column: Greeting, Value Proposition & Quick CTA */}
           <div className="lg:col-span-7 space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="bg-slate-100 text-slate-800 text-[11px] font-semibold px-3 py-1 rounded-full border border-slate-200 flex items-center gap-1.5">
-                <Store className="w-3.5 h-3.5 text-teal-600" />
-                Mini ATM &amp; Kasir Ritel POS
-              </span>
-              <span className="bg-emerald-50 text-emerald-700 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Sistem Terhubung Real-Time
-              </span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span className="font-semibold text-slate-700">Mini ATM &amp; Kasir Ritel POS</span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span>Sinkronisasi Real-Time</span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span>Database Terisolasi</span>
             </div>
 
             <div className="space-y-1.5">
@@ -190,32 +181,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
 
-            {/* Quick Summary Badges - Clean White Minimalist */}
+            {/* Quick Summary Badges - Clean Minimalist */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
-              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold block">
                   Total Laba Bersih
                 </span>
-                <span className="text-base sm:text-lg font-black text-emerald-600 block mt-0.5">
+                <span className="text-base sm:text-lg font-bold text-emerald-600 block mt-0.5">
                   {formatRp(stats.totalCombinedProfit)}
                 </span>
               </div>
 
-              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold block">
                   Total Omset Terproses
                 </span>
-                <span className="text-base sm:text-lg font-black text-slate-900 block mt-0.5">
+                <span className="text-base sm:text-lg font-bold text-slate-900 block mt-0.5">
                   {formatRp(stats.totalCombinedRevenue)}
                 </span>
               </div>
 
-              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3 col-span-2 sm:col-span-1">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold block">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold block">
                   Tingkat Sukses
                 </span>
-                <span className="text-base sm:text-lg font-black text-teal-800 block mt-0.5">
-                  {stats.rate}% <span className="text-[11px] font-semibold text-slate-500">({stats.successCount} Trx)</span>
+                <span className="text-base sm:text-lg font-bold text-slate-800 block mt-0.5">
+                  {stats.rate}% <span className="text-[11px] font-normal text-slate-500">({stats.successCount} Trx)</span>
                 </span>
               </div>
             </div>
@@ -224,14 +215,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex flex-wrap gap-2.5 pt-2">
               <button
                 onClick={onOpenNewTrx}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-xs cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />
                 <span>Catat Transaksi Baru</span>
               </button>
               <button
                 onClick={() => onNavigateTab('kasir-fisik')}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+                className="bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-xs cursor-pointer"
               >
                 <ShoppingCart className="w-4 h-4 text-white" />
                 <span>Buka Kasir POS Ritel</span>
@@ -239,10 +230,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Custom Animated Vector Illustration for Retail Sales */}
-          <div className="lg:col-span-5 flex items-center justify-center p-1">
-            <div className="w-full max-w-sm lg:max-w-md bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80 shadow-2xs">
-              <RetailSalesIllustration className="w-full h-auto" />
+          {/* Right Column: Terminal & Cash Telemetry Card */}
+          <div className="lg:col-span-5 flex items-center justify-center">
+            <div className="w-full bg-slate-50 rounded-2xl p-5 border border-slate-200/90 shadow-2xs space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-blue-700" />
+                  <span>Status Terminal &amp; Kasir</span>
+                </span>
+                <span className="text-[11px] font-mono text-emerald-700 font-semibold">
+                  Operasional Aktif
+                </span>
+              </div>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Likuiditas Kas &amp; Bank:</span>
+                  <span className="font-bold text-slate-900 font-mono">{formatRp(totalBalance)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Total Transaksi Tercatat:</span>
+                  <span className="font-semibold text-slate-800">{stats.totalAll} Trx ({stats.rate}% Sukses)</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Omset Kasir Ritel (POS):</span>
+                  <span className="font-semibold text-slate-800">{formatRp(stats.posGrossRevenue)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Total Item Terjual:</span>
+                  <span className="font-semibold text-slate-800">{stats.posItemsSold} Unit</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -271,7 +288,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-800 truncate">{acc.name}</span>
-                <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
+                <span className="text-[11px] font-mono text-slate-500 font-medium">
                   {acc.type}
                 </span>
               </div>
@@ -374,7 +391,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">Laba Bersih Ritel POS</span>
               <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
-                <Sparkles className="w-4 h-4" />
+                <TrendingUp className="w-4 h-4" />
               </div>
             </div>
             <div>
